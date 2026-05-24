@@ -216,8 +216,8 @@ canvas {
   position: absolute;
   left: 14px;
   bottom: 18px;
-  width: 122px;
-  height: 122px;
+  width: 156px;
+  height: 156px;
   transform: none;
   cursor: grab;
   pointer-events: auto;
@@ -235,7 +235,7 @@ canvas {
 
 .joystick-ring {
   position: absolute;
-  inset: 4px;
+  inset: 5px;
   border-radius: 50%;
   background:
     radial-gradient(circle at 50% 50%, rgba(255, 255, 255, 0.88) 0 23%, transparent 24%),
@@ -251,8 +251,8 @@ canvas {
   position: absolute;
   left: 50%;
   top: 50%;
-  width: 42px;
-  height: 42px;
+  width: 54px;
+  height: 54px;
   border-radius: 50%;
   background: rgba(255, 255, 255, 0.88);
   transform: translate(-50%, -50%);
@@ -282,9 +282,9 @@ canvas {
   top: 50%;
   width: 0;
   height: 0;
-  border-left: 13px solid transparent;
-  border-right: 13px solid transparent;
-  border-bottom: 23px solid rgba(255, 255, 255, 0.82);
+  border-left: 17px solid transparent;
+  border-right: 17px solid transparent;
+  border-bottom: 30px solid rgba(255, 255, 255, 0.82);
   background: transparent;
   transform: translate(-50%, -50%);
   filter: drop-shadow(0 2px 4px rgba(0, 0, 0, 0.16));
@@ -300,33 +300,33 @@ canvas {
 }
 
 .control-up {
-  top: 5px;
-  left: 43px;
-  width: 36px;
-  height: 36px;
+  top: 7px;
+  left: 55px;
+  width: 46px;
+  height: 46px;
 }
 
 .control-left {
-  top: 43px;
-  left: 5px;
-  width: 36px;
-  height: 36px;
+  top: 55px;
+  left: 7px;
+  width: 46px;
+  height: 46px;
   transform: rotate(-90deg);
 }
 
 .control-down {
-  bottom: 5px;
-  left: 43px;
-  width: 36px;
-  height: 36px;
+  bottom: 7px;
+  left: 55px;
+  width: 46px;
+  height: 46px;
   transform: rotate(180deg);
 }
 
 .control-right {
-  top: 43px;
-  right: 5px;
-  width: 36px;
-  height: 36px;
+  top: 55px;
+  right: 7px;
+  width: 46px;
+  height: 46px;
   transform: rotate(90deg);
 }
 

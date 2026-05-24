@@ -497,7 +497,7 @@ function spawnSpike() {
   const usedCells = new Set();
   gameState.activeSpikes = [];
 
-  const spikeCount = randomBetween(5, 10);
+  const spikeCount = getSpikeCountForLevel();
 
   for (const candidate of shuffledCandidates) {
     const key = `${candidate.x},${candidate.y}`;
@@ -616,6 +616,18 @@ function isPlayerCell(x, y) {
 
 function randomBetween(min, max) {
   return Math.floor(Math.random() * (max - min + 1)) + min;
+}
+
+function getSpikeCountForLevel() {
+  const level = gameState.level;
+
+  if (level <= 5) return randomBetween(5, 10);
+  if (level <= 10) return randomBetween(8, 12);
+  if (level <= 15) return randomBetween(10, 16);
+  if (level <= 20) return randomBetween(20, 25);
+  if (level <= 25) return randomBetween(25, 30);
+  if (level <= 30) return randomBetween(30, 35);
+  return randomBetween(35, 50);
 }
 
 function shuffleArray(items) {
