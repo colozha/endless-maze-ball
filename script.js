@@ -36,9 +36,10 @@ const gameState = {
     moveStartX: 0,
     moveStartY: 0,
     moveStartedAt: 0,
-    moveDuration: 150,
+    moveDuration: 95,
     radius: 0.25,
-    isMoving: false
+    isMoving: false,
+    queuedDirection: null
   },
   start: {
     x: 1,
@@ -63,14 +64,19 @@ const gameState = {
     dragOffsetY: 0,
     wasMoved: false,
     userMoved: false,
-    isVisible: true
+    isVisible: true,
+    holdIntervalId: null,
+    holdDirection: null
   },
   swipe: {
     pointerId: null,
     startX: 0,
     startY: 0,
     isTracking: false,
-    threshold: 30
+    hasMoved: false,
+    threshold: 30,
+    repeatIntervalId: null,
+    activeDirection: null
   },
   audio: {
     context: null
@@ -92,6 +98,8 @@ function bindEvents() {
   document.getElementById("startButton").addEventListener("click", startGame);
   document.getElementById("playAgainButton").addEventListener("click", startGame);
   document.getElementById("backHomeButton").addEventListener("click", () => {
+    stopControlPress();
+    stopSwipeRepeat();
     stopGameLoop();
     clearSpike();
     showPage("home");
@@ -127,13 +135,16 @@ function bindEvents() {
   });
 
   document.querySelectorAll("[data-direction]").forEach((button) => {
-    const handler = (event) => {
+    button.addEventListener("pointerdown", (event) => {
       event.preventDefault();
       event.stopPropagation();
-      movePlayer(button.dataset.direction);
-    };
+      button.setPointerCapture(event.pointerId);
+      startControlPress(button.dataset.direction);
+    });
 
-    button.addEventListener("pointerdown", handler);
+    button.addEventListener("pointerup", stopControlPress);
+    button.addEventListener("pointercancel", stopControlPress);
+    button.addEventListener("pointerleave", stopControlPress);
   });
 
   bindDraggableControls();
@@ -149,6 +160,8 @@ function showPage(pageName) {
 
 function startGame() {
   ensureAudioContext();
+  stopControlPress();
+  stopSwipeRepeat();
   clearSpike();
   stopGameLoop();
   gameState.level = 1;
@@ -163,6 +176,8 @@ function startGame() {
 
 function endGame() {
   gameState.isGameRunning = false;
+  stopControlPress();
+  stopSwipeRepeat();
   clearSpike();
   stopGameLoop();
   saveHighScore();
@@ -232,6 +247,7 @@ function resetPlayer() {
   gameState.player.moveStartX = gameState.player.x;
   gameState.player.moveStartY = gameState.player.y;
   gameState.player.isMoving = false;
+  gameState.player.queuedDirection = null;
 }
 
 function drawGame() {
@@ -382,7 +398,12 @@ function updateGame() {
 }
 
 function movePlayer(direction) {
-  if (!gameState.isGameRunning || gameState.page !== "game" || gameState.player.isMoving) {
+  if (!gameState.isGameRunning || gameState.page !== "game") {
+    return;
+  }
+
+  if (gameState.player.isMoving) {
+    gameState.player.queuedDirection = direction;
     return;
   }
 
@@ -476,7 +497,18 @@ function updatePlayerAnimation() {
     gameState.player.y = gameState.player.targetY;
     gameState.player.isMoving = false;
     checkCollision();
+    playQueuedMove();
   }
+}
+
+function playQueuedMove() {
+  if (!gameState.isGameRunning || gameState.player.isMoving || !gameState.player.queuedDirection) {
+    return;
+  }
+
+  const direction = gameState.player.queuedDirection;
+  gameState.player.queuedDirection = null;
+  movePlayer(direction);
 }
 
 function spawnSpike() {
@@ -592,6 +624,7 @@ function saveControlsVisibility() {
 }
 
 function toggleControlsVisibility() {
+  stopControlPress();
   gameState.controls.isVisible = !gameState.controls.isVisible;
   saveControlsVisibility();
   updateControlsVisibility();
@@ -836,7 +869,18 @@ function bindSwipeControls() {
     gameState.swipe.startX = event.clientX;
     gameState.swipe.startY = event.clientY;
     gameState.swipe.isTracking = true;
+    gameState.swipe.hasMoved = false;
+    gameState.swipe.activeDirection = null;
     panel.setPointerCapture(event.pointerId);
+  });
+
+  panel.addEventListener("pointermove", (event) => {
+    if (!gameState.swipe.isTracking || gameState.swipe.pointerId !== event.pointerId) {
+      return;
+    }
+
+    event.preventDefault();
+    handleSwipeMove(event.clientX, event.clientY);
   });
 
   panel.addEventListener("pointerup", (event) => {
@@ -845,7 +889,7 @@ function bindSwipeControls() {
     }
 
     event.preventDefault();
-    handleSwipeEnd(event.clientX, event.clientY);
+    handleSwipeMove(event.clientX, event.clientY);
     cancelSwipe(panel, event.pointerId);
   });
 
@@ -856,7 +900,7 @@ function bindSwipeControls() {
   });
 }
 
-function handleSwipeEnd(endX, endY) {
+function handleSwipeMove(endX, endY) {
   if (!gameState.isGameRunning || gameState.page !== "game") {
     return;
   }
@@ -870,20 +914,44 @@ function handleSwipeEnd(endX, endY) {
     return;
   }
 
-  if (absX > absY) {
-    movePlayer(deltaX > 0 ? "right" : "left");
-    return;
+  const direction = absX > absY
+    ? (deltaX > 0 ? "right" : "left")
+    : (deltaY > 0 ? "down" : "up");
+
+  if (!gameState.swipe.hasMoved) {
+    movePlayer(direction);
+    gameState.swipe.hasMoved = true;
   }
 
-  movePlayer(deltaY > 0 ? "down" : "up");
+  if (gameState.swipe.activeDirection !== direction) {
+    startSwipeRepeat(direction);
+  }
 }
 
 function cancelSwipe(panel, pointerId) {
+  stopSwipeRepeat();
   gameState.swipe.isTracking = false;
   gameState.swipe.pointerId = null;
+  gameState.swipe.hasMoved = false;
+  gameState.swipe.activeDirection = null;
 
   if (panel.hasPointerCapture?.(pointerId)) {
     panel.releasePointerCapture(pointerId);
+  }
+}
+
+function startSwipeRepeat(direction) {
+  stopSwipeRepeat();
+  gameState.swipe.activeDirection = direction;
+  gameState.swipe.repeatIntervalId = window.setInterval(() => {
+    movePlayer(gameState.swipe.activeDirection);
+  }, 130);
+}
+
+function stopSwipeRepeat() {
+  if (gameState.swipe.repeatIntervalId) {
+    window.clearInterval(gameState.swipe.repeatIntervalId);
+    gameState.swipe.repeatIntervalId = null;
   }
 }
 
@@ -895,6 +963,24 @@ function endControlDrag(event, controls) {
   gameState.controls.isDragging = false;
   gameState.controls.pointerId = null;
   controls.classList.remove("is-dragging");
+}
+
+function startControlPress(direction) {
+  stopControlPress();
+  gameState.controls.holdDirection = direction;
+  movePlayer(direction);
+  gameState.controls.holdIntervalId = window.setInterval(() => {
+    movePlayer(gameState.controls.holdDirection);
+  }, 105);
+}
+
+function stopControlPress() {
+  if (gameState.controls.holdIntervalId) {
+    window.clearInterval(gameState.controls.holdIntervalId);
+    gameState.controls.holdIntervalId = null;
+  }
+
+  gameState.controls.holdDirection = null;
 }
 
 function setControlsPosition(left, top) {
