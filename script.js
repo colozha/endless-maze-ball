@@ -16,6 +16,10 @@ const hud = {
   controlsToggleIcon: document.getElementById("controlsToggleIcon")
 };
 
+const buttons = {
+  continueButton: document.getElementById("continueButton")
+};
+
 const GRID_COLS = 13;
 const GRID_ROWS = 21;
 const WALL = 1;
@@ -36,7 +40,7 @@ const gameState = {
     moveStartX: 0,
     moveStartY: 0,
     moveStartedAt: 0,
-    moveDuration: 95,
+    moveDuration: 85,
     radius: 0.25,
     isMoving: false,
     queuedDirection: null
@@ -50,6 +54,8 @@ const gameState = {
     y: GRID_ROWS - 2
   },
   activeSpikes: [],
+  lifeToken: null,
+  lifeTokenTimeoutId: null,
   spikeTimeoutId: null,
   spikeClearTimeoutId: null,
   isGameRunning: false,
@@ -68,6 +74,10 @@ const gameState = {
     holdIntervalId: null,
     holdDirection: null
   },
+  keyboard: {
+    heldDirections: [],
+    holdIntervalId: null
+  },
   swipe: {
     pointerId: null,
     startX: 0,
@@ -76,7 +86,8 @@ const gameState = {
     hasMoved: false,
     threshold: 30,
     repeatIntervalId: null,
-    activeDirection: null
+    activeDirection: null,
+    holdStartedAt: 0
   },
   audio: {
     context: null
@@ -88,6 +99,7 @@ function initGame() {
   gameState.controls.isVisible = loadControlsVisibility();
   updateControlsVisibility();
   updateHUD();
+  updateContinueButton();
   showPage("home");
   bindEvents();
   resizeCanvas();
@@ -96,12 +108,16 @@ function initGame() {
 
 function bindEvents() {
   document.getElementById("startButton").addEventListener("click", startGame);
+  buttons.continueButton.addEventListener("click", continueGame);
   document.getElementById("playAgainButton").addEventListener("click", startGame);
   document.getElementById("backHomeButton").addEventListener("click", () => {
+    saveProgress();
     stopControlPress();
     stopSwipeRepeat();
+    stopKeyboardControls();
     stopGameLoop();
     clearSpike();
+    clearLifeToken();
     showPage("home");
   });
   document.getElementById("controlsToggle").addEventListener("click", toggleControlsVisibility);
@@ -130,7 +146,30 @@ function bindEvents() {
     const direction = keyMap[event.key];
     if (direction) {
       event.preventDefault();
-      movePlayer(direction);
+      startKeyboardPress(direction);
+    }
+  });
+
+  window.addEventListener("keyup", (event) => {
+    const keyMap = {
+      ArrowUp: "up",
+      ArrowDown: "down",
+      ArrowLeft: "left",
+      ArrowRight: "right",
+      w: "up",
+      W: "up",
+      s: "down",
+      S: "down",
+      a: "left",
+      A: "left",
+      d: "right",
+      D: "right"
+    };
+
+    const direction = keyMap[event.key];
+    if (direction) {
+      event.preventDefault();
+      stopKeyboardPress(direction);
     }
   });
 
@@ -155,21 +194,52 @@ function showPage(pageName) {
   gameState.page = pageName;
   Object.values(pages).forEach((page) => page.classList.remove("page-active"));
   pages[pageName].classList.add("page-active");
+  updateContinueButton();
   updateHUD();
 }
 
 function startGame() {
   ensureAudioContext();
+  clearSavedProgress();
   stopControlPress();
   stopSwipeRepeat();
+  stopKeyboardControls();
   clearSpike();
+  clearLifeToken();
   stopGameLoop();
   gameState.level = 1;
   gameState.lives = gameState.maxLives;
   gameState.isGameRunning = true;
   generateMaze();
+  saveProgress();
   showPage("game");
   resizeCanvas();
+  scheduleNextSpike();
+  updateGame();
+}
+
+function continueGame() {
+  const progress = loadSavedProgress();
+  if (!progress) {
+    updateContinueButton();
+    return;
+  }
+
+  ensureAudioContext();
+  stopControlPress();
+  stopSwipeRepeat();
+  stopKeyboardControls();
+  clearSpike();
+  clearLifeToken();
+  stopGameLoop();
+  gameState.level = progress.level;
+  gameState.lives = progress.lives;
+  gameState.isGameRunning = true;
+  generateMaze();
+  saveProgress();
+  showPage("game");
+  resizeCanvas();
+  spawnLifeTokenForLevel();
   scheduleNextSpike();
   updateGame();
 }
@@ -178,18 +248,24 @@ function endGame() {
   gameState.isGameRunning = false;
   stopControlPress();
   stopSwipeRepeat();
+  stopKeyboardControls();
   clearSpike();
+  clearLifeToken();
   stopGameLoop();
   saveHighScore();
+  clearSavedProgress();
   showPage("end");
 }
 
 function nextLevel() {
   clearSpike();
+  clearLifeToken();
   gameState.level += 1;
   saveHighScore();
+  saveProgress();
   generateMaze();
   updateHUD();
+  spawnLifeTokenForLevel();
   scheduleNextSpike();
 }
 
@@ -262,6 +338,7 @@ function drawGame() {
   drawCells();
   drawStartIcon(gameState.start);
   drawFinishIcon(gameState.finish);
+  drawLifeToken();
   drawSpikes();
   drawPlayer();
 }
@@ -387,6 +464,39 @@ function drawSpikes() {
   });
 }
 
+function drawLifeToken() {
+  if (!gameState.lifeToken) {
+    return;
+  }
+
+  const center = gridCenter(gameState.lifeToken.x, gameState.lifeToken.y);
+  const size = gameState.cellSize * 0.26;
+  ctx.fillStyle = "#ff3f63";
+  ctx.beginPath();
+  ctx.moveTo(center.x, center.y + size * 0.72);
+  ctx.bezierCurveTo(
+    center.x - size * 1.9,
+    center.y - size * 0.25,
+    center.x - size * 0.98,
+    center.y - size * 1.5,
+    center.x,
+    center.y - size * 0.72
+  );
+  ctx.bezierCurveTo(
+    center.x + size * 0.98,
+    center.y - size * 1.5,
+    center.x + size * 1.9,
+    center.y - size * 0.25,
+    center.x,
+    center.y + size * 0.72
+  );
+  ctx.closePath();
+  ctx.fill();
+  ctx.strokeStyle = "rgba(255, 255, 255, 0.72)";
+  ctx.lineWidth = Math.max(1.5, gameState.cellSize * 0.06);
+  ctx.stroke();
+}
+
 function updateGame() {
   if (!gameState.isGameRunning) {
     return;
@@ -429,6 +539,7 @@ function movePlayer(direction) {
     gameState.player.targetX = nextX;
     gameState.player.targetY = nextY;
     gameState.player.moveStartedAt = performance.now();
+    gameState.player.moveDuration = getCurrentMoveDuration();
     gameState.player.isMoving = true;
   }
 }
@@ -462,6 +573,18 @@ function checkCollision() {
   }
 
   const hitSpike = gameState.activeSpikes.some((spike) => spike.x === playerCell.x && spike.y === playerCell.y);
+  const hitLifeToken = gameState.lifeToken &&
+    gameState.lifeToken.x === playerCell.x &&
+    gameState.lifeToken.y === playerCell.y;
+
+  if (hitLifeToken) {
+    gameState.lives += 1;
+    clearLifeToken();
+    saveProgress();
+    updateHUD();
+    return;
+  }
+
   if (!hitSpike) {
     return;
   }
@@ -476,6 +599,7 @@ function checkCollision() {
   }
 
   resetPlayer();
+  saveProgress();
   updateHUD();
   scheduleNextSpike();
 }
@@ -488,7 +612,7 @@ function updatePlayerAnimation() {
 
   const elapsed = performance.now() - gameState.player.moveStartedAt;
   const progress = Math.min(elapsed / gameState.player.moveDuration, 1);
-  const eased = 1 - Math.pow(1 - progress, 3);
+  const eased = progress;
   gameState.player.x = lerp(gameState.player.moveStartX, gameState.player.targetX, eased);
   gameState.player.y = lerp(gameState.player.moveStartY, gameState.player.targetY, eased);
 
@@ -497,11 +621,11 @@ function updatePlayerAnimation() {
     gameState.player.y = gameState.player.targetY;
     gameState.player.isMoving = false;
     checkCollision();
-    playQueuedMove();
+    startQueuedMove();
   }
 }
 
-function playQueuedMove() {
+function startQueuedMove() {
   if (!gameState.isGameRunning || gameState.player.isMoving || !gameState.player.queuedDirection) {
     return;
   }
@@ -578,6 +702,41 @@ function clearSpike(cancelSchedule = true) {
   }
 }
 
+function spawnLifeTokenForLevel() {
+  if (gameState.level % 7 !== 0) {
+    return;
+  }
+
+  const candidates = [];
+  for (let y = 1; y < GRID_ROWS - 1; y += 1) {
+    for (let x = 1; x < GRID_COLS - 1; x += 1) {
+      if (
+        gameState.maze[y][x] === PATH &&
+        !isImportantCell(x, y) &&
+        !isPlayerCell(x, y)
+      ) {
+        candidates.push({ x, y });
+      }
+    }
+  }
+
+  if (candidates.length === 0) {
+    return;
+  }
+
+  gameState.lifeToken = candidates[Math.floor(Math.random() * candidates.length)];
+  gameState.lifeTokenTimeoutId = window.setTimeout(clearLifeToken, 10000);
+}
+
+function clearLifeToken() {
+  gameState.lifeToken = null;
+
+  if (gameState.lifeTokenTimeoutId) {
+    window.clearTimeout(gameState.lifeTokenTimeoutId);
+    gameState.lifeTokenTimeoutId = null;
+  }
+}
+
 function scheduleNextSpike() {
   if (!gameState.isGameRunning) {
     return;
@@ -590,17 +749,69 @@ function scheduleNextSpike() {
   gameState.spikeTimeoutId = window.setTimeout(() => {
     gameState.spikeTimeoutId = null;
     spawnSpike();
-  }, randomBetween(5000, 10000));
+  }, randomBetween(3000, 7000));
 }
 
 function updateHUD() {
   gameState.highScore = Math.max(gameState.highScore, loadHighScore());
   hud.homeHighScore.textContent = gameState.highScore;
   hud.levelText.textContent = gameState.level;
-  hud.livesText.textContent = `${gameState.lives} / ${gameState.maxLives}`;
+  hud.livesText.textContent = gameState.lives;
   hud.gameHighScore.textContent = gameState.highScore;
   hud.finalLevelText.textContent = gameState.level;
   hud.endHighScore.textContent = gameState.highScore;
+}
+
+function saveProgress() {
+  if (!gameState.isGameRunning || gameState.lives <= 0) {
+    return;
+  }
+
+  localStorage.setItem(
+    "mazeBallProgress",
+    JSON.stringify({
+      level: gameState.level,
+      lives: gameState.lives
+    })
+  );
+  updateContinueButton();
+}
+
+function loadSavedProgress() {
+  try {
+    const progress = JSON.parse(localStorage.getItem("mazeBallProgress"));
+    if (
+      !progress ||
+      !Number.isInteger(progress.level) ||
+      !Number.isInteger(progress.lives) ||
+      progress.level < 1 ||
+      progress.lives < 1
+    ) {
+      return null;
+    }
+
+    return progress;
+  } catch {
+    return null;
+  }
+}
+
+function clearSavedProgress() {
+  localStorage.removeItem("mazeBallProgress");
+  updateContinueButton();
+}
+
+function updateContinueButton() {
+  if (!buttons.continueButton) {
+    return;
+  }
+
+  const progress = loadSavedProgress();
+  buttons.continueButton.hidden = !progress;
+
+  if (progress) {
+    buttons.continueButton.textContent = `Continue Level ${progress.level}`;
+  }
 }
 
 function saveHighScore() {
@@ -943,16 +1154,47 @@ function cancelSwipe(panel, pointerId) {
 function startSwipeRepeat(direction) {
   stopSwipeRepeat();
   gameState.swipe.activeDirection = direction;
-  gameState.swipe.repeatIntervalId = window.setInterval(() => {
-    movePlayer(gameState.swipe.activeDirection);
-  }, 130);
+  gameState.swipe.holdStartedAt = performance.now();
+  scheduleSwipeRepeat();
 }
 
 function stopSwipeRepeat() {
   if (gameState.swipe.repeatIntervalId) {
-    window.clearInterval(gameState.swipe.repeatIntervalId);
+    window.clearTimeout(gameState.swipe.repeatIntervalId);
     gameState.swipe.repeatIntervalId = null;
   }
+}
+
+function scheduleSwipeRepeat() {
+  if (!gameState.swipe.activeDirection || !gameState.swipe.isTracking) {
+    return;
+  }
+
+  gameState.swipe.repeatIntervalId = window.setTimeout(() => {
+    movePlayer(gameState.swipe.activeDirection);
+    scheduleSwipeRepeat();
+  }, getSwipeRepeatDelay());
+}
+
+function getSwipeHoldElapsed() {
+  if (!gameState.swipe.activeDirection || !gameState.swipe.holdStartedAt) {
+    return 0;
+  }
+
+  return performance.now() - gameState.swipe.holdStartedAt;
+}
+
+function getSwipeSpeedFactor() {
+  const elapsed = getSwipeHoldElapsed();
+  return Math.min(elapsed / 1600, 1);
+}
+
+function getSwipeRepeatDelay() {
+  return Math.round(125 - 40 * getSwipeSpeedFactor());
+}
+
+function getCurrentMoveDuration() {
+  return Math.round(85 - 15 * getSwipeSpeedFactor());
 }
 
 function endControlDrag(event, controls) {
@@ -971,7 +1213,7 @@ function startControlPress(direction) {
   movePlayer(direction);
   gameState.controls.holdIntervalId = window.setInterval(() => {
     movePlayer(gameState.controls.holdDirection);
-  }, 105);
+  }, 85);
 }
 
 function stopControlPress() {
@@ -981,6 +1223,42 @@ function stopControlPress() {
   }
 
   gameState.controls.holdDirection = null;
+}
+
+function startKeyboardPress(direction) {
+  if (!gameState.keyboard.heldDirections.includes(direction)) {
+    gameState.keyboard.heldDirections.push(direction);
+  }
+
+  movePlayer(direction);
+
+  if (gameState.keyboard.holdIntervalId) {
+    return;
+  }
+
+  gameState.keyboard.holdIntervalId = window.setInterval(() => {
+    const activeDirection = gameState.keyboard.heldDirections.at(-1);
+    if (activeDirection) {
+      movePlayer(activeDirection);
+    }
+  }, 85);
+}
+
+function stopKeyboardPress(direction) {
+  gameState.keyboard.heldDirections = gameState.keyboard.heldDirections.filter((item) => item !== direction);
+
+  if (gameState.keyboard.heldDirections.length === 0) {
+    stopKeyboardControls();
+  }
+}
+
+function stopKeyboardControls() {
+  if (gameState.keyboard.holdIntervalId) {
+    window.clearInterval(gameState.keyboard.holdIntervalId);
+    gameState.keyboard.holdIntervalId = null;
+  }
+
+  gameState.keyboard.heldDirections = [];
 }
 
 function setControlsPosition(left, top) {
