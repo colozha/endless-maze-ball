@@ -1,0 +1,82 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Maze Ball</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <main class="app-shell">
+    <section id="homePage" class="page page-active">
+      <div class="card home-card">
+        <p class="eyebrow">Endless Maze Challenge</p>
+        <h1>Maze Ball</h1>
+        <p class="description">
+          Move the ball through a random maze, avoid the spikes, and reach the Finish to level up.
+        </p>
+        <div class="score-box">
+          <span>High Score</span>
+          <strong id="homeHighScore">0</strong>
+        </div>
+        <button id="startButton" class="primary-button">Start Game</button>
+      </div>
+    </section>
+
+    <section id="gamePage" class="page">
+      <div class="game-frame">
+        <div class="hud">
+          <div>
+            <span>Level</span>
+            <strong id="levelText">1</strong>
+          </div>
+          <div>
+            <span>Lives</span>
+            <strong id="livesText">5 / 5</strong>
+          </div>
+          <div>
+            <span>High</span>
+            <strong id="gameHighScore">0</strong>
+          </div>
+        </div>
+
+        <div id="canvasWrap" class="canvas-wrap">
+          <canvas id="gameCanvas" aria-label="Maze Ball game canvas"></canvas>
+
+          <div class="controls" aria-label="Directional controls">
+            <div class="joystick-base">
+              <button class="control-button control-up" data-direction="up" aria-label="Up"></button>
+              <button class="control-button control-left" data-direction="left" aria-label="Left"></button>
+              <button class="control-button control-down" data-direction="down" aria-label="Down"></button>
+              <button class="control-button control-right" data-direction="right" aria-label="Right"></button>
+              <div class="joystick-ring"></div>
+              <div class="joystick-knob"></div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section id="endPage" class="page">
+      <div class="card end-card">
+        <p class="eyebrow">Game Over</p>
+        <h2>Game Over</h2>
+        <div class="result-grid">
+          <div>
+            <span>Last Level</span>
+            <strong id="finalLevelText">1</strong>
+          </div>
+          <div>
+            <span>High Score</span>
+            <strong id="endHighScore">0</strong>
+          </div>
+        </div>
+        <button id="playAgainButton" class="primary-button">Play Again</button>
+        <button id="backHomeButton" class="secondary-button">Back to Home</button>
+      </div>
+    </section>
+  </main>
+
+  <script src="script.js"></script>
+</body>
+</html>
