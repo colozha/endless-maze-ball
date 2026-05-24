@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html lang="id">
+<html lang="en">
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
@@ -38,9 +38,13 @@
             <span>High</span>
             <strong id="gameHighScore">0</strong>
           </div>
+          <button id="controlsToggle" class="control-toggle" type="button" aria-label="Hide directional controls" aria-pressed="true">
+            <span>Controls</span>
+            <strong id="controlsToggleIcon" class="toggle-icon" aria-hidden="true"></strong>
+          </button>
         </div>
 
-        <div id="canvasWrap" class="canvas-wrap">
+        <div id="canvasWrap" class="canvas-wrap maze-panel">
           <canvas id="gameCanvas" aria-label="Maze Ball game canvas"></canvas>
 
           <div class="controls" aria-label="Directional controls">

@@ -12,7 +12,8 @@ const hud = {
   livesText: document.getElementById("livesText"),
   gameHighScore: document.getElementById("gameHighScore"),
   finalLevelText: document.getElementById("finalLevelText"),
-  endHighScore: document.getElementById("endHighScore")
+  endHighScore: document.getElementById("endHighScore"),
+  controlsToggleIcon: document.getElementById("controlsToggleIcon")
 };
 
 const GRID_COLS = 13;
@@ -61,7 +62,15 @@ const gameState = {
     dragOffsetX: 0,
     dragOffsetY: 0,
     wasMoved: false,
-    userMoved: false
+    userMoved: false,
+    isVisible: true
+  },
+  swipe: {
+    pointerId: null,
+    startX: 0,
+    startY: 0,
+    isTracking: false,
+    threshold: 30
   },
   audio: {
     context: null
@@ -70,6 +79,8 @@ const gameState = {
 
 function initGame() {
   gameState.highScore = loadHighScore();
+  gameState.controls.isVisible = loadControlsVisibility();
+  updateControlsVisibility();
   updateHUD();
   showPage("home");
   bindEvents();
@@ -85,6 +96,7 @@ function bindEvents() {
     clearSpike();
     showPage("home");
   });
+  document.getElementById("controlsToggle").addEventListener("click", toggleControlsVisibility);
 
   window.addEventListener("resize", () => {
     resizeCanvas();
@@ -121,11 +133,11 @@ function bindEvents() {
       movePlayer(button.dataset.direction);
     };
 
-    button.addEventListener("click", handler);
     button.addEventListener("pointerdown", handler);
   });
 
   bindDraggableControls();
+  bindSwipeControls();
 }
 
 function showPage(pageName) {
@@ -571,6 +583,33 @@ function loadHighScore() {
   return Number(localStorage.getItem("mazeBallHighScore")) || 0;
 }
 
+function loadControlsVisibility() {
+  return localStorage.getItem("mazeBallControlsVisible") !== "false";
+}
+
+function saveControlsVisibility() {
+  localStorage.setItem("mazeBallControlsVisible", String(gameState.controls.isVisible));
+}
+
+function toggleControlsVisibility() {
+  gameState.controls.isVisible = !gameState.controls.isVisible;
+  saveControlsVisibility();
+  updateControlsVisibility();
+}
+
+function updateControlsVisibility() {
+  const controls = document.querySelector(".controls");
+  const toggle = document.getElementById("controlsToggle");
+
+  controls.classList.toggle("controls-hidden", !gameState.controls.isVisible);
+  hud.controlsToggleIcon.classList.toggle("is-hidden", !gameState.controls.isVisible);
+  toggle.setAttribute("aria-pressed", String(gameState.controls.isVisible));
+  toggle.setAttribute(
+    "aria-label",
+    gameState.controls.isVisible ? "Hide directional controls" : "Show directional controls"
+  );
+}
+
 function resizeCanvas() {
   const wrapper = document.getElementById("canvasWrap");
   const rect = wrapper.getBoundingClientRect();
@@ -782,6 +821,70 @@ function bindDraggableControls() {
 
   controls.addEventListener("pointerup", (event) => endControlDrag(event, controls));
   controls.addEventListener("pointercancel", (event) => endControlDrag(event, controls));
+}
+
+function bindSwipeControls() {
+  const panel = document.getElementById("canvasWrap");
+
+  panel.addEventListener("pointerdown", (event) => {
+    if (!gameState.isGameRunning || event.target.closest(".controls")) {
+      return;
+    }
+
+    event.preventDefault();
+    gameState.swipe.pointerId = event.pointerId;
+    gameState.swipe.startX = event.clientX;
+    gameState.swipe.startY = event.clientY;
+    gameState.swipe.isTracking = true;
+    panel.setPointerCapture(event.pointerId);
+  });
+
+  panel.addEventListener("pointerup", (event) => {
+    if (!gameState.swipe.isTracking || gameState.swipe.pointerId !== event.pointerId) {
+      return;
+    }
+
+    event.preventDefault();
+    handleSwipeEnd(event.clientX, event.clientY);
+    cancelSwipe(panel, event.pointerId);
+  });
+
+  panel.addEventListener("pointercancel", (event) => {
+    if (gameState.swipe.pointerId === event.pointerId) {
+      cancelSwipe(panel, event.pointerId);
+    }
+  });
+}
+
+function handleSwipeEnd(endX, endY) {
+  if (!gameState.isGameRunning || gameState.page !== "game") {
+    return;
+  }
+
+  const deltaX = endX - gameState.swipe.startX;
+  const deltaY = endY - gameState.swipe.startY;
+  const absX = Math.abs(deltaX);
+  const absY = Math.abs(deltaY);
+
+  if (Math.max(absX, absY) < gameState.swipe.threshold) {
+    return;
+  }
+
+  if (absX > absY) {
+    movePlayer(deltaX > 0 ? "right" : "left");
+    return;
+  }
+
+  movePlayer(deltaY > 0 ? "down" : "up");
+}
+
+function cancelSwipe(panel, pointerId) {
+  gameState.swipe.isTracking = false;
+  gameState.swipe.pointerId = null;
+
+  if (panel.hasPointerCapture?.(pointerId)) {
+    panel.releasePointerCapture(pointerId);
+  }
 }
 
 function endControlDrag(event, controls) {

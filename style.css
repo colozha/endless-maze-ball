@@ -123,12 +123,13 @@ h2 {
 
 .score-box span,
 .result-grid span,
-.hud span {
+.hud span,
+.control-toggle span {
   display: block;
   color: var(--muted);
-  font-size: 0.76rem;
+  font-size: clamp(0.62rem, 2.2vw, 0.74rem);
   font-weight: 800;
-  letter-spacing: 0.08em;
+  letter-spacing: 0.1em;
   text-transform: uppercase;
 }
 
@@ -170,7 +171,7 @@ h2 {
   aspect-ratio: 9 / 16;
   display: grid;
   grid-template-rows: auto 1fr;
-  gap: 10px;
+  gap: 8px;
   padding: 12px;
   border: 1px solid var(--panel-border);
   border-radius: 28px;
@@ -180,36 +181,97 @@ h2 {
 
 .hud {
   display: grid;
-  grid-template-columns: repeat(3, 1fr);
-  gap: 8px;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 7px;
 }
 
-.hud > div {
-  padding: 10px 8px;
-  border-radius: 16px;
+.hud > div,
+.control-toggle {
+  min-height: 62px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 8px 6px;
+  border-radius: 15px;
   background: rgba(255, 255, 255, 0.08);
   text-align: center;
 }
 
-.hud strong {
-  display: block;
-  margin-top: 3px;
-  font-size: clamp(1rem, 4vw, 1.22rem);
+.control-toggle {
+  color: var(--text);
+  cursor: pointer;
 }
 
-.canvas-wrap {
+.control-toggle:hover {
+  background: rgba(255, 255, 255, 0.14);
+}
+
+.toggle-icon {
+  position: relative;
+  width: 24px;
+  height: 14px;
+  margin: 4px auto 0;
+  border: 2px solid rgba(255, 255, 255, 0.86);
+  border-radius: 50%;
+}
+
+.toggle-icon::before {
+  content: "";
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.9);
+  transform: translate(-50%, -50%);
+}
+
+.toggle-icon.is-hidden::after {
+  content: "";
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: 30px;
+  height: 2px;
+  border-radius: 99px;
+  background: rgba(255, 99, 126, 0.95);
+  transform: translate(-50%, -50%) rotate(-36deg);
+}
+
+.hud strong,
+.control-toggle strong {
+  display: block;
+  margin-top: 2px;
+  font-size: clamp(0.95rem, 3.6vw, 1.16rem);
+  line-height: 1.1;
+}
+
+.canvas-wrap,
+.maze-panel {
   position: relative;
   min-height: 0;
   overflow: hidden;
   border-radius: 20px;
   background: var(--path);
+  touch-action: none;
+  user-select: none;
+  -webkit-user-select: none;
 }
 
+#gameCanvas,
 canvas {
   display: block;
   width: 100%;
   height: 100%;
   touch-action: none;
+  user-select: none;
+  -webkit-user-select: none;
+}
+
+.controls.controls-hidden {
+  display: none;
 }
 
 .controls {
@@ -363,6 +425,6 @@ canvas {
 
   .controls {
     bottom: 12px;
-    transform: translateX(-50%) scale(0.94);
+    transform: none;
   }
 }
