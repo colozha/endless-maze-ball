@@ -56,8 +56,13 @@ const gameState = {
   activeSpikes: [],
   lifeToken: null,
   lifeTokenTimeoutId: null,
+  shieldToken: null,
+  shieldTokenTimeoutId: null,
+  shieldTimeoutId: null,
+  shieldActiveUntil: 0,
   spikeTimeoutId: null,
   spikeClearTimeoutId: null,
+  lastFrameTime: 0,
   isGameRunning: false,
   animationFrameId: null,
   cellSize: 1,
@@ -94,6 +99,7 @@ const gameState = {
   }
 };
 
+// Initialize saved state, UI, and first render.
 function initGame() {
   gameState.highScore = loadHighScore();
   gameState.controls.isVisible = loadControlsVisibility();
@@ -106,6 +112,7 @@ function initGame() {
   drawGame();
 }
 
+// Bind all player input and page buttons.
 function bindEvents() {
   document.getElementById("startButton").addEventListener("click", startGame);
   buttons.continueButton.addEventListener("click", continueGame);
@@ -118,6 +125,8 @@ function bindEvents() {
     stopGameLoop();
     clearSpike();
     clearLifeToken();
+    clearShieldToken();
+    clearShieldEffect();
     showPage("home");
   });
   document.getElementById("controlsToggle").addEventListener("click", toggleControlsVisibility);
@@ -190,6 +199,7 @@ function bindEvents() {
   bindSwipeControls();
 }
 
+// Switch between Home, Game, and End screens.
 function showPage(pageName) {
   gameState.page = pageName;
   Object.values(pages).forEach((page) => page.classList.remove("page-active"));
@@ -198,6 +208,7 @@ function showPage(pageName) {
   updateHUD();
 }
 
+// Start a fresh run from level 1.
 function startGame() {
   ensureAudioContext();
   clearSavedProgress();
@@ -206,6 +217,8 @@ function startGame() {
   stopKeyboardControls();
   clearSpike();
   clearLifeToken();
+  clearShieldToken();
+  clearShieldEffect();
   stopGameLoop();
   gameState.level = 1;
   gameState.lives = gameState.maxLives;
@@ -215,9 +228,11 @@ function startGame() {
   showPage("game");
   resizeCanvas();
   scheduleNextSpike();
+  gameState.lastFrameTime = performance.now();
   updateGame();
 }
 
+// Resume saved progress with a newly generated maze.
 function continueGame() {
   const progress = loadSavedProgress();
   if (!progress) {
@@ -231,6 +246,8 @@ function continueGame() {
   stopKeyboardControls();
   clearSpike();
   clearLifeToken();
+  clearShieldToken();
+  clearShieldEffect();
   stopGameLoop();
   gameState.level = progress.level;
   gameState.lives = progress.lives;
@@ -240,10 +257,13 @@ function continueGame() {
   showPage("game");
   resizeCanvas();
   spawnLifeTokenForLevel();
+  spawnShieldTokenForLevel();
   scheduleNextSpike();
+  gameState.lastFrameTime = performance.now();
   updateGame();
 }
 
+// Stop the run, clear active timers, and show Game Over.
 function endGame() {
   gameState.isGameRunning = false;
   stopControlPress();
@@ -257,18 +277,23 @@ function endGame() {
   showPage("end");
 }
 
+// Advance to the next level and rebuild level hazards.
 function nextLevel() {
   clearSpike();
   clearLifeToken();
+  clearShieldToken();
+  clearShieldEffect();
   gameState.level += 1;
   saveHighScore();
   saveProgress();
   generateMaze();
   updateHUD();
   spawnLifeTokenForLevel();
+  spawnShieldTokenForLevel();
   scheduleNextSpike();
 }
 
+// Generate a solvable randomized maze.
 function generateMaze() {
   const maze = Array.from({ length: GRID_ROWS }, () => Array(GRID_COLS).fill(WALL));
   const directions = [
@@ -326,6 +351,7 @@ function resetPlayer() {
   gameState.player.queuedDirection = null;
 }
 
+// Render the full game scene to canvas.
 function drawGame() {
   if (!ctx) {
     return;
@@ -339,6 +365,7 @@ function drawGame() {
   drawStartIcon(gameState.start);
   drawFinishIcon(gameState.finish);
   drawLifeToken();
+  drawShieldToken();
   drawSpikes();
   drawPlayer();
 }
@@ -432,11 +459,20 @@ function drawPlayer() {
   ctx.strokeStyle = "rgba(4, 19, 22, 0.42)";
   ctx.lineWidth = Math.max(2, radius * 0.16);
   ctx.stroke();
+
+  if (hasActiveShield()) {
+    ctx.strokeStyle = "rgba(112, 216, 255, 0.94)";
+    ctx.lineWidth = Math.max(3, radius * 0.24);
+    ctx.beginPath();
+    ctx.arc(center.x, center.y, radius * 1.38, 0, Math.PI * 2);
+    ctx.stroke();
+  }
 }
 
 function drawSpikes() {
   gameState.activeSpikes.forEach((spike) => {
-    const rect = gridRect(spike.x, spike.y);
+    const drawPosition = getSpikeDrawPosition(spike);
+    const rect = gridRect(drawPosition.x, drawPosition.y);
     const pad = rect.size * 0.18;
     ctx.fillStyle = "#ff4f6d";
     ctx.beginPath();
@@ -497,16 +533,44 @@ function drawLifeToken() {
   ctx.stroke();
 }
 
+function drawShieldToken() {
+  if (!gameState.shieldToken) {
+    return;
+  }
+
+  const center = gridCenter(gameState.shieldToken.x, gameState.shieldToken.y);
+  const size = gameState.cellSize * 0.36;
+  ctx.fillStyle = "#70d8ff";
+  ctx.beginPath();
+  ctx.moveTo(center.x, center.y - size * 1.1);
+  ctx.lineTo(center.x + size * 0.88, center.y - size * 0.72);
+  ctx.lineTo(center.x + size * 0.66, center.y + size * 0.28);
+  ctx.quadraticCurveTo(center.x + size * 0.42, center.y + size * 0.86, center.x, center.y + size * 1.12);
+  ctx.quadraticCurveTo(center.x - size * 0.42, center.y + size * 0.86, center.x - size * 0.66, center.y + size * 0.28);
+  ctx.lineTo(center.x - size * 0.88, center.y - size * 0.72);
+  ctx.closePath();
+  ctx.fill();
+  ctx.strokeStyle = "rgba(255, 255, 255, 0.78)";
+  ctx.lineWidth = Math.max(1.5, gameState.cellSize * 0.06);
+  ctx.stroke();
+}
+
+// Main requestAnimationFrame loop.
 function updateGame() {
   if (!gameState.isGameRunning) {
     return;
   }
 
+  const now = performance.now();
+  const deltaSeconds = Math.min((now - gameState.lastFrameTime) / 1000, 0.05);
+  gameState.lastFrameTime = now;
+  updateMovingSpikes(deltaSeconds);
   updatePlayerAnimation();
   drawGame();
   gameState.animationFrameId = requestAnimationFrame(updateGame);
 }
 
+// Queue or start one-cell player movement.
 function movePlayer(direction) {
   if (!gameState.isGameRunning || gameState.page !== "game") {
     return;
@@ -560,6 +624,7 @@ function canMoveTo(x, y) {
   });
 }
 
+// Resolve finish, token, spike, and shield collisions.
 function checkCollision() {
   const playerCell = {
     x: Math.floor(gameState.player.x),
@@ -567,15 +632,22 @@ function checkCollision() {
   };
 
   if (playerCell.x === gameState.finish.x && playerCell.y === gameState.finish.y) {
+    clearShieldEffect();
     playSuccessSound();
     nextLevel();
     return;
   }
 
-  const hitSpike = gameState.activeSpikes.some((spike) => spike.x === playerCell.x && spike.y === playerCell.y);
+  const hitSpike = gameState.activeSpikes.some((spike) => {
+    const spikeCell = getSpikeCollisionCell(spike);
+    return spikeCell.x === playerCell.x && spikeCell.y === playerCell.y;
+  });
   const hitLifeToken = gameState.lifeToken &&
     gameState.lifeToken.x === playerCell.x &&
     gameState.lifeToken.y === playerCell.y;
+  const hitShieldToken = gameState.shieldToken &&
+    gameState.shieldToken.x === playerCell.x &&
+    gameState.shieldToken.y === playerCell.y;
 
   if (hitLifeToken) {
     gameState.lives += 1;
@@ -585,7 +657,20 @@ function checkCollision() {
     return;
   }
 
+  if (hitShieldToken) {
+    activateShield();
+    clearShieldToken();
+    playShieldPickupSound();
+    return;
+  }
+
   if (!hitSpike) {
+    return;
+  }
+
+  if (hasActiveShield()) {
+    clearSpike();
+    scheduleNextSpike();
     return;
   }
 
@@ -604,6 +689,7 @@ function checkCollision() {
   scheduleNextSpike();
 }
 
+// Interpolate player position between grid cells.
 function updatePlayerAnimation() {
   if (!gameState.player.isMoving) {
     checkCollision();
@@ -635,6 +721,7 @@ function startQueuedMove() {
   movePlayer(direction);
 }
 
+// Spawn a wave of spikes based on the current level.
 function spawnSpike() {
   if (!gameState.isGameRunning || gameState.page !== "game") {
     return;
@@ -674,12 +761,23 @@ function spawnSpike() {
     }
 
     usedCells.add(key);
-    gameState.activeSpikes.push(candidate);
+    gameState.activeSpikes.push({
+      ...candidate,
+      currentX: candidate.x,
+      currentY: candidate.y,
+      isMoving: false,
+      moveDirection: null,
+      targetX: candidate.x,
+      targetY: candidate.y
+    });
 
     if (gameState.activeSpikes.length === spikeCount) {
       break;
     }
   }
+
+  prepareMovingSpikes();
+  prepareHomingSpikes();
 
   const visibleMs = randomBetween(2000, 4000);
   gameState.spikeClearTimeoutId = window.setTimeout(() => {
@@ -702,6 +800,130 @@ function clearSpike(cancelSchedule = true) {
   }
 }
 
+// Mark eligible level 11-20 spikes to move forward.
+function prepareMovingSpikes() {
+  if (gameState.level < 11 || gameState.level > 20) {
+    return;
+  }
+
+  const eligibleSpikes = gameState.activeSpikes.filter((spike) => countForwardPathCells(spike) > 1);
+  if (eligibleSpikes.length === 0) {
+    return;
+  }
+
+  const movingCount = Math.max(1, Math.ceil(eligibleSpikes.length * 0.2));
+  shuffleArray(eligibleSpikes).slice(0, movingCount).forEach((spike) => {
+    const direction = getSpikeMoveDirection(spike.side);
+    const distance = countForwardPathCells(spike);
+    spike.isMoving = true;
+    spike.moveDirection = direction;
+    spike.targetX = spike.x + direction.x * distance;
+    spike.targetY = spike.y + direction.y * distance;
+  });
+}
+
+// Update forward-moving and homing spikes each frame.
+function updateMovingSpikes(deltaSeconds) {
+  if (gameState.activeSpikes.length === 0) {
+    return;
+  }
+
+  const speed = 3.2;
+  const now = performance.now();
+  gameState.activeSpikes = gameState.activeSpikes.filter((spike) => {
+    if (spike.isHoming) {
+      if (now >= spike.homingEndsAt) {
+        return false;
+      }
+
+      const targetX = gameState.player.x;
+      const targetY = gameState.player.y;
+      const deltaX = targetX - spike.currentX;
+      const deltaY = targetY - spike.currentY;
+      const distance = Math.hypot(deltaX, deltaY);
+
+      if (distance < 0.02) {
+        return true;
+      }
+
+      const step = Math.min(speed * deltaSeconds, distance);
+      spike.currentX += (deltaX / distance) * step;
+      spike.currentY += (deltaY / distance) * step;
+      return true;
+    }
+
+    if (!spike.isMoving || !spike.moveDirection) {
+      return true;
+    }
+
+    const step = speed * deltaSeconds;
+    const remainingX = spike.targetX - spike.currentX;
+    const remainingY = spike.targetY - spike.currentY;
+    const remainingDistance = Math.abs(remainingX) + Math.abs(remainingY);
+
+    if (remainingDistance <= step) {
+      return false;
+    }
+
+    spike.currentX += spike.moveDirection.x * step;
+    spike.currentY += spike.moveDirection.y * step;
+    return true;
+  });
+}
+
+// Mark random level 21+ spikes to chase the player.
+function prepareHomingSpikes() {
+  if (gameState.level < 21 || gameState.activeSpikes.length === 0) {
+    return;
+  }
+
+  const homingCount = Math.max(1, Math.ceil(gameState.activeSpikes.length * 0.1));
+  shuffleArray([...gameState.activeSpikes]).slice(0, homingCount).forEach((spike) => {
+    spike.isMoving = false;
+    spike.moveDirection = null;
+    spike.isHoming = true;
+    spike.homingEndsAt = performance.now() + 5000;
+  });
+}
+
+function countForwardPathCells(spike) {
+  const direction = getSpikeMoveDirection(spike.side);
+  let x = spike.x + direction.x;
+  let y = spike.y + direction.y;
+  let count = 0;
+
+  while (gameState.maze[y]?.[x] === PATH) {
+    count += 1;
+    x += direction.x;
+    y += direction.y;
+  }
+
+  return count;
+}
+
+function getSpikeMoveDirection(side) {
+  if (side === "top") return { x: 0, y: 1 };
+  if (side === "bottom") return { x: 0, y: -1 };
+  if (side === "left") return { x: 1, y: 0 };
+  return { x: -1, y: 0 };
+}
+
+function getSpikeDrawPosition(spike) {
+  return {
+    x: spike.currentX ?? spike.x,
+    y: spike.currentY ?? spike.y
+  };
+}
+
+function getSpikeCollisionCell(spike) {
+  const position = getSpikeDrawPosition(spike);
+  return {
+    x: Math.floor(position.x + 0.5),
+    y: Math.floor(position.y + 0.5)
+  };
+}
+
+// Spawn bonus life token on every 7th level.
 function spawnLifeTokenForLevel() {
   if (gameState.level % 7 !== 0) {
     return;
@@ -725,7 +947,7 @@ function spawnLifeTokenForLevel() {
   }
 
   gameState.lifeToken = candidates[Math.floor(Math.random() * candidates.length)];
-  gameState.lifeTokenTimeoutId = window.setTimeout(clearLifeToken, 10000);
+  gameState.lifeTokenTimeoutId = window.setTimeout(clearLifeToken, 15000);
 }
 
 function clearLifeToken() {
@@ -735,6 +957,69 @@ function clearLifeToken() {
     window.clearTimeout(gameState.lifeTokenTimeoutId);
     gameState.lifeTokenTimeoutId = null;
   }
+}
+
+// Randomly spawn a temporary shield token from level 6 onward.
+function spawnShieldTokenForLevel() {
+  if (gameState.level < 6 || Math.random() >= 0.25) {
+    return;
+  }
+
+  const candidates = [];
+  for (let y = 1; y < GRID_ROWS - 1; y += 1) {
+    for (let x = 1; x < GRID_COLS - 1; x += 1) {
+      if (
+        gameState.maze[y][x] === PATH &&
+        !isImportantCell(x, y) &&
+        !isPlayerCell(x, y) &&
+        !isLifeTokenCell(x, y)
+      ) {
+        candidates.push({ x, y });
+      }
+    }
+  }
+
+  if (candidates.length === 0) {
+    return;
+  }
+
+  gameState.shieldToken = candidates[Math.floor(Math.random() * candidates.length)];
+  gameState.shieldTokenTimeoutId = window.setTimeout(clearShieldToken, 15000);
+}
+
+function clearShieldToken() {
+  gameState.shieldToken = null;
+
+  if (gameState.shieldTokenTimeoutId) {
+    window.clearTimeout(gameState.shieldTokenTimeoutId);
+    gameState.shieldTokenTimeoutId = null;
+  }
+}
+
+function activateShield() {
+  gameState.shieldActiveUntil = performance.now() + 10000;
+
+  if (gameState.shieldTimeoutId) {
+    window.clearTimeout(gameState.shieldTimeoutId);
+  }
+
+  gameState.shieldTimeoutId = window.setTimeout(() => {
+    clearShieldEffect();
+    playShieldExpireSound();
+  }, 10000);
+}
+
+function clearShieldEffect() {
+  gameState.shieldActiveUntil = 0;
+
+  if (gameState.shieldTimeoutId) {
+    window.clearTimeout(gameState.shieldTimeoutId);
+    gameState.shieldTimeoutId = null;
+  }
+}
+
+function hasActiveShield() {
+  return gameState.shieldActiveUntil > performance.now();
 }
 
 function scheduleNextSpike() {
@@ -752,6 +1037,7 @@ function scheduleNextSpike() {
   }, randomBetween(3000, 7000));
 }
 
+// Sync level, lives, and score text.
 function updateHUD() {
   gameState.highScore = Math.max(gameState.highScore, loadHighScore());
   hud.homeHighScore.textContent = gameState.highScore;
@@ -762,6 +1048,7 @@ function updateHUD() {
   hud.endHighScore.textContent = gameState.highScore;
 }
 
+// Persist unfinished run progress.
 function saveProgress() {
   if (!gameState.isGameRunning || gameState.lives <= 0) {
     return;
@@ -854,6 +1141,7 @@ function updateControlsVisibility() {
   );
 }
 
+// Resize canvas while keeping grid collision coordinates stable.
 function resizeCanvas() {
   const wrapper = document.getElementById("canvasWrap");
   const rect = wrapper.getBoundingClientRect();
@@ -897,6 +1185,10 @@ function isPlayerCell(x, y) {
   return x === Math.floor(gameState.player.targetX) && y === Math.floor(gameState.player.targetY);
 }
 
+function isLifeTokenCell(x, y) {
+  return Boolean(gameState.lifeToken && gameState.lifeToken.x === x && gameState.lifeToken.y === y);
+}
+
 function randomBetween(min, max) {
   return Math.floor(Math.random() * (max - min + 1)) + min;
 }
@@ -925,6 +1217,7 @@ function lerp(start, end, progress) {
   return start + (end - start) * progress;
 }
 
+// Lazily create browser audio after user interaction.
 function ensureAudioContext() {
   if (!gameState.audio.context) {
     const AudioContextClass = window.AudioContext || window.webkitAudioContext;
@@ -974,6 +1267,30 @@ function playMoveSound() {
 
   const now = audioContext.currentTime;
   playTone(330, now, 0.045, "triangle", 0.035);
+}
+
+function playShieldPickupSound() {
+  const audioContext = ensureAudioContext();
+  if (!audioContext) {
+    return;
+  }
+
+  const now = audioContext.currentTime;
+  playTone(440, now, 0.1, "triangle", 0.06);
+  playTone(659.25, now + 0.08, 0.14, "sine", 0.08);
+  playTone(987.77, now + 0.18, 0.18, "sine", 0.06);
+}
+
+function playShieldExpireSound() {
+  const audioContext = ensureAudioContext();
+  if (!audioContext) {
+    return;
+  }
+
+  const now = audioContext.currentTime;
+  playTone(659.25, now, 0.1, "triangle", 0.045);
+  playTone(493.88, now + 0.08, 0.14, "triangle", 0.04);
+  playTone(329.63, now + 0.18, 0.18, "sine", 0.035);
 }
 
 function playTone(frequency, startTime, duration, type, volume) {
@@ -1031,6 +1348,7 @@ function drawRoundedRect(x, y, width, height, radius, fill = false) {
   }
 }
 
+// Let the joystick be repositioned inside the maze panel.
 function bindDraggableControls() {
   const controls = document.querySelector(".controls");
   const wrapper = document.getElementById("canvasWrap");
@@ -1067,6 +1385,7 @@ function bindDraggableControls() {
   controls.addEventListener("pointercancel", (event) => endControlDrag(event, controls));
 }
 
+// Bind swipe and swipe-hold movement on the maze panel.
 function bindSwipeControls() {
   const panel = document.getElementById("canvasWrap");
 
