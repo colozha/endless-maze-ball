@@ -18,9 +18,11 @@ Saat Finish dicapai, level naik dan labirin dibuat ulang secara random.
 
 ## Halaman
 
-- `Home Page`: judul, deskripsi, high score, tombol Continue jika ada progress, dan Start Game.
-- `Game Page`: HUD level, lives, high score, toggle controls, canvas labirin, dan joystick.
+- `Home Page`: judul, deskripsi, high score Easy/Hard, tombol Continue jika ada progress, dan Start Game.
+- `Game Page`: HUD level, lives, high score, difficulty, boss flag, pause, toggle controls, canvas labirin, dan joystick.
 - `End Page`: Game Over, last level, high score, Play Again, dan Back to Home.
+- `Tutorial Overlay`: muncul sekali untuk menjelaskan keyboard, joystick, swipe, token, dan shield.
+- `Pause Overlay`: resume, restart, dan back home.
 
 ## State Utama
 
@@ -35,7 +37,7 @@ Mapping keyboard disimpan di `DIRECTION_BY_KEY` dalam `js/config.js`.
 - `lives`: jumlah nyawa aktif. Bisa lebih dari 5 jika mengambil token nyawa.
 - `maxLives`: nilai awal nyawa, yaitu 5.
 - `difficulty`: mode game aktif, `easy` atau `hard`.
-- `highScore`: level tertinggi dari `localStorage`.
+- `highScore`: level tertinggi per difficulty dari `localStorage`.
 - `maze`: grid labirin.
 - `player`: posisi, target, animasi, dan queue gerakan bola.
 - `activeSpikes`: duri yang sedang aktif.
@@ -48,6 +50,9 @@ Mapping keyboard disimpan di `DIRECTION_BY_KEY` dalam `js/config.js`.
 - `swipe`: state pointer swipe dan swipe-hold.
 - `keyboard`: state keyboard hold.
 - `audio`: Web Audio context.
+- `isPaused`: status pause aktif.
+- `pausedTimers`: registry timeout yang sedang dihentikan saat pause.
+- `bossWaveIndex`: urutan pola hazard boss level.
 
 ## Labirin
 
@@ -98,13 +103,10 @@ Interval spawn duri:
 
 Jumlah duri berdasarkan level:
 
-- Level `1-5`: `5-10` duri.
-- Level `6-10`: `8-12` duri.
-- Level `11-15`: `10-16` duri.
-- Level `16-20`: `20-25` duri.
-- Level `21-25`: `25-30` duri.
-- Level `26-30`: `30-35` duri.
-- Level `31+`: `35-50` duri.
+- Jumlah duri memakai formula gradual dari `GAME_CONFIG.spikes.scaling`.
+- Base count dimulai dari `5`.
+- Count bertambah pelan per level dan di-random dengan spread kecil.
+- Count maksimal adalah `50`.
 
 Jika bola terkena duri:
 
@@ -135,12 +137,23 @@ Pada level `21+`, sebagian duri bergerak mengejar bola hanya di mode Hard.
 - Duri terpilih bergerak mengejar posisi bola selama `7 detik`.
 - Duri homing mengikuti jalur kosong maze dengan pathfinding grid.
 - Duri homing tidak boleh menembus dinding.
+- Duri homing memakai warna warning berbeda dari duri normal.
 - Duri homing mengabaikan duri lain sebagai blocker agar tidak berhenti saat bertemu duri lain.
 - Jika duri homing tersangkut, game menghitung ulang jalur dari cell kosong terdekat.
 - Arah segitiga duri homing mengikuti arah gerakan aktual dengan rotasi halus saat berbelok.
 - Setelah 7 detik, duri homing menghilang.
 - Efek collision tetap sama: bola kehilangan 1 nyawa jika menyentuh duri homing.
 - Jika shield aktif, bola tetap kebal terhadap duri homing.
+
+### Boss Level
+
+Boss Level aktif di mode Hard pada setiap level kelipatan `10`.
+
+- Maze tetap normal.
+- Hazard memakai pola khusus per wave.
+- Wave boss berganti setiap fase duri spawn.
+- Pola boss diatur dari `GAME_CONFIG.bossLevel.wavePatterns`.
+- Easy tidak memakai Boss Level.
 
 ## Token Nyawa
 
@@ -171,10 +184,13 @@ Mulai level 6, setiap level punya probabilitas `25%` untuk memunculkan token shi
 
 Storage yang digunakan:
 
-- `mazeBallHighScore`: level tertinggi yang pernah dicapai.
+- `mazeBallHighScoreEasy`: level tertinggi Easy.
+- `mazeBallHighScoreHard`: level tertinggi Hard.
+- `mazeBallHighScore`: legacy key yang dimigrasi ke Easy jika ada.
 - `mazeBallProgress`: progress level, lives, dan difficulty saat game belum selesai.
 - `mazeBallControlsVisible`: state show/hide joystick.
 - `mazeBallDifficulty`: mode difficulty terakhir yang dipilih.
+- `mazeBallTutorialSeen`: status tutorial first-time.
 
 Progress:
 
@@ -193,8 +209,19 @@ Game punya dua mode difficulty saat memulai game baru:
 - Easy: duri spawn setiap `5-10 detik`.
 - Hard: memakai semua fitur duri seperti kondisi penuh saat ini.
 - Hard: duri spawn setiap `3-7 detik`.
+- Hard: level kelipatan `10` memakai Boss Level.
 - Jika progress lama tidak punya data difficulty, Continue memakai default Easy.
 - Header Game Page menampilkan flag mode aktif.
+
+## Pause
+
+Pause menu tersedia dari HUD.
+
+- Resume melanjutkan game.
+- Restart memulai run baru dari level 1.
+- Back Home menyimpan progress lalu kembali ke Home.
+- Pause menghentikan input hold, swipe repeat, game loop, dan timeout aktif.
+- Timer duri, token, shield, dan transition dilanjutkan dari sisa durasi saat resume.
 
 ## Audio
 

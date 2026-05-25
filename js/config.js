@@ -57,14 +57,25 @@ const GAME_CONFIG = {
       durationMs: 7000,
       speedCellsPerSecond: 3.2
     },
-    countByLevel: [
-      { maxLevel: 5, min: 5, max: 10 },
-      { maxLevel: 10, min: 8, max: 12 },
-      { maxLevel: 15, min: 10, max: 16 },
-      { maxLevel: 20, min: 20, max: 25 },
-      { maxLevel: 25, min: 25, max: 30 },
-      { maxLevel: 30, min: 30, max: 35 },
-      { maxLevel: Infinity, min: 35, max: 50 }
+    scaling: {
+      baseCount: 5,
+      countGrowthPerLevel: 1.12,
+      randomSpread: 2,
+      maxCount: 50,
+      movingRatioStart: 0.1,
+      movingRatioGrowth: 0.015,
+      movingRatioMax: 0.28,
+      homingRatioStart: 0.06,
+      homingRatioGrowth: 0.008,
+      homingRatioMax: 0.16
+    }
+  },
+  bossLevel: {
+    everyLevels: 10,
+    wavePatterns: [
+      { countMultiplier: 1.15, movingRatio: 0, homingRatio: 0 },
+      { countMultiplier: 1.0, movingRatio: 0.32, homingRatio: 0 },
+      { countMultiplier: 0.85, movingRatio: 0.12, homingRatio: 0.18 }
     ]
   },
   tokens: {
@@ -95,7 +106,9 @@ const GAME_CONFIG = {
         path: "#dbe7f5",
         wallStart: "#355b85",
         wallEnd: "#1f3755",
-        spike: "#ff4f6d"
+        spike: "#ff4f6d",
+        homingSpike: "#70d8ff",
+        homingGlow: "rgba(112, 216, 255, 0.7)"
       },
       orange: {
         minLevel: 11,
@@ -103,7 +116,9 @@ const GAME_CONFIG = {
         path: "#f4e4cf",
         wallStart: "#9a5a2c",
         wallEnd: "#3a2418",
-        spike: "#ff6b3d"
+        spike: "#ff6b3d",
+        homingSpike: "#70d8ff",
+        homingGlow: "rgba(112, 216, 255, 0.72)"
       },
       neon: {
         minLevel: 21,
@@ -111,7 +126,9 @@ const GAME_CONFIG = {
         path: "#101622",
         wallStart: "#3043ff",
         wallEnd: "#111735",
-        spike: "#ff2bd6"
+        spike: "#ff2bd6",
+        homingSpike: "#21f6ff",
+        homingGlow: "rgba(33, 246, 255, 0.78)"
       }
     }
   }
@@ -119,9 +136,12 @@ const GAME_CONFIG = {
 
 const STORAGE_KEYS = {
   highScore: "mazeBallHighScore",
+  highScoreEasy: "mazeBallHighScoreEasy",
+  highScoreHard: "mazeBallHighScoreHard",
   progress: "mazeBallProgress",
   controlsVisible: "mazeBallControlsVisible",
-  difficulty: "mazeBallDifficulty"
+  difficulty: "mazeBallDifficulty",
+  tutorialSeen: "mazeBallTutorialSeen"
 };
 
 const GRID_COLS = GAME_CONFIG.grid.cols;

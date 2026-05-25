@@ -8,23 +8,32 @@ const pages = {
 };
 
 const hud = {
-  homeHighScore: document.getElementById("homeHighScore"),
+  homeEasyHighScore: document.getElementById("homeEasyHighScore"),
+  homeHardHighScore: document.getElementById("homeHardHighScore"),
   levelText: document.getElementById("levelText"),
   livesText: document.getElementById("livesText"),
   gameHighScore: document.getElementById("gameHighScore"),
   difficultyText: document.getElementById("difficultyText"),
   finalLevelText: document.getElementById("finalLevelText"),
   endHighScore: document.getElementById("endHighScore"),
-  controlsToggleIcon: document.getElementById("controlsToggleIcon")
+  controlsToggleIcon: document.getElementById("controlsToggleIcon"),
+  bossFlag: document.getElementById("bossFlag")
 };
 
 const buttons = {
-  continueButton: document.getElementById("continueButton")
+  continueButton: document.getElementById("continueButton"),
+  pauseButton: document.getElementById("pauseButton"),
+  resumeButton: document.getElementById("resumeButton"),
+  restartPauseButton: document.getElementById("restartPauseButton"),
+  homePauseButton: document.getElementById("homePauseButton"),
+  tutorialDoneButton: document.getElementById("tutorialDoneButton")
 };
 
 const overlays = {
   levelTransition: document.getElementById("levelTransition"),
-  levelTransitionText: document.getElementById("levelTransitionText")
+  levelTransitionText: document.getElementById("levelTransitionText"),
+  pause: document.getElementById("pauseOverlay"),
+  tutorial: document.getElementById("tutorialOverlay")
 };
 
 // ===== Runtime State =====
@@ -34,7 +43,10 @@ const gameState = {
   lives: GAME_CONFIG.lives.initial,
   maxLives: GAME_CONFIG.lives.initial,
   difficulty: "easy",
-  highScore: 0,
+  highScore: {
+    easy: 0,
+    hard: 0
+  },
   maze: [],
   player: {
     x: 0,
@@ -71,6 +83,10 @@ const gameState = {
   spikeClearTimeoutId: null,
   lastFrameTime: 0,
   isGameRunning: false,
+  isPaused: false,
+  pausedAt: 0,
+  pausedTimers: {},
+  bossWaveIndex: 0,
   animationFrameId: null,
   cellSize: 1,
   offsetX: 0,
@@ -109,7 +125,8 @@ const gameState = {
 // ===== App Lifecycle =====
 // Initialize saved state, UI, and first render.
 function initGame() {
-  gameState.highScore = loadHighScore();
+  migrateLegacyHighScore();
+  gameState.highScore = loadHighScores();
   gameState.difficulty = loadSelectedDifficulty();
   gameState.controls.isVisible = loadControlsVisibility();
   updateControlsVisibility();
@@ -133,6 +150,11 @@ function bindEvents() {
     showPage("home");
   });
   document.getElementById("controlsToggle").addEventListener("click", toggleControlsVisibility);
+  buttons.pauseButton.addEventListener("click", pauseGame);
+  buttons.resumeButton.addEventListener("click", resumeGame);
+  buttons.restartPauseButton.addEventListener("click", restartGameFromPause);
+  buttons.homePauseButton.addEventListener("click", backHomeFromPause);
+  buttons.tutorialDoneButton.addEventListener("click", hideTutorial);
   document.querySelectorAll("[data-difficulty]").forEach((button) => {
     button.addEventListener("click", () => {
       gameState.difficulty = button.dataset.difficulty;
@@ -148,6 +170,16 @@ function bindEvents() {
   });
 
   window.addEventListener("keydown", (event) => {
+    if (event.key === "Escape" && gameState.page === "game") {
+      event.preventDefault();
+      if (gameState.isPaused) {
+        resumeGame();
+      } else {
+        pauseGame();
+      }
+      return;
+    }
+
     const direction = DIRECTION_BY_KEY[event.key];
     if (direction) {
       event.preventDefault();
@@ -195,9 +227,11 @@ function startGame() {
   ensureAudioContext();
   clearSavedProgress();
   clearActiveRunState();
+  resetPauseState();
   gameState.level = DEBUG_FLAGS.enabled ? DEBUG_FLAGS.startLevel : 1;
   gameState.lives = gameState.maxLives;
   gameState.difficulty = DEBUG_FLAGS.forcedDifficulty || loadSelectedDifficulty();
+  gameState.bossWaveIndex = 0;
   updateDifficultySelection();
   gameState.isGameRunning = true;
   generateMaze();
@@ -205,6 +239,16 @@ function startGame() {
   saveProgress();
   showPage("game");
   resizeCanvas();
+  if (showTutorialIfNeeded()) {
+    drawGame();
+    return;
+  }
+  startLevelRuntime();
+}
+
+function startLevelRuntime() {
+  spawnLifeTokenForLevel();
+  spawnShieldTokenForLevel();
   scheduleNextSpike();
   gameState.lastFrameTime = performance.now();
   updateGame();
@@ -220,9 +264,11 @@ function continueGame() {
 
   ensureAudioContext();
   clearActiveRunState();
+  resetPauseState();
   gameState.level = progress.level;
   gameState.lives = progress.lives;
   gameState.difficulty = progress.difficulty || "easy";
+  gameState.bossWaveIndex = 0;
   saveSelectedDifficulty();
   updateDifficultySelection();
   gameState.isGameRunning = true;
@@ -231,11 +277,11 @@ function continueGame() {
   saveProgress();
   showPage("game");
   resizeCanvas();
-  spawnLifeTokenForLevel();
-  spawnShieldTokenForLevel();
-  scheduleNextSpike();
-  gameState.lastFrameTime = performance.now();
-  updateGame();
+  if (showTutorialIfNeeded()) {
+    drawGame();
+    return;
+  }
+  startLevelRuntime();
 }
 
 // Stop the run, clear active timers, and show Game Over.
@@ -251,6 +297,7 @@ function endGame() {
 function nextLevel() {
   clearLevelTimers();
   gameState.level += 1;
+  gameState.bossWaveIndex = 0;
   saveHighScore();
   saveProgress();
   generateMaze();
@@ -530,7 +577,20 @@ function drawSpikes() {
     ctx.save();
     ctx.translate(center.x, center.y);
     ctx.rotate(angle);
-    ctx.fillStyle = theme.spike;
+    if (spike.isHoming) {
+      const pulse = 0.62 + Math.sin(performance.now() / 130) * 0.18;
+      ctx.shadowColor = theme.homingGlow;
+      ctx.shadowBlur = rect.size * 0.42;
+      ctx.strokeStyle = theme.homingGlow;
+      ctx.lineWidth = Math.max(2, rect.size * 0.07);
+      ctx.globalAlpha = pulse;
+      ctx.beginPath();
+      ctx.arc(0, 0, rect.size * 0.42, 0, Math.PI * 2);
+      ctx.stroke();
+      ctx.globalAlpha = 1;
+    }
+
+    ctx.fillStyle = spike.isHoming ? theme.homingSpike : theme.spike;
     ctx.beginPath();
     ctx.moveTo(length, 0);
     ctx.lineTo(-length * 0.52, -width);
@@ -613,7 +673,7 @@ function drawShieldToken() {
 // ===== Game Loop and Player Movement =====
 // Main requestAnimationFrame loop.
 function updateGame() {
-  if (!gameState.isGameRunning) {
+  if (!gameState.isGameRunning || gameState.isPaused) {
     return;
   }
 
@@ -630,7 +690,7 @@ function updateGame() {
 
 // Queue or start one-cell player movement.
 function movePlayer(direction) {
-  if (!gameState.isGameRunning || gameState.page !== "game") {
+  if (!gameState.isGameRunning || isInputBlocked() || gameState.page !== "game") {
     return;
   }
 
@@ -790,7 +850,7 @@ function startQueuedMove() {
 // ===== Hazards and Tokens =====
 // Spawn a wave of spikes based on the current level.
 function spawnSpike() {
-  if (!gameState.isGameRunning || gameState.page !== "game" || DEBUG_FLAGS.noSpikes) {
+  if (!gameState.isGameRunning || gameState.isPaused || gameState.page !== "game" || DEBUG_FLAGS.noSpikes) {
     return;
   }
 
@@ -854,13 +914,13 @@ function spawnSpike() {
 
   prepareMovingSpikes(spawnedSpikes);
   prepareHomingSpikes(spawnedSpikes);
+  advanceBossWave();
 
   const visibleMs = randomBetween(GAME_CONFIG.spikes.visibleMs.min, GAME_CONFIG.spikes.visibleMs.max);
-  gameState.spikeClearTimeoutId = window.setTimeout(() => {
+  scheduleTrackedTimeout("spikeClearTimeoutId", visibleMs, () => {
     gameState.activeSpikes = gameState.activeSpikes.filter((spike) => spike.isHoming && performance.now() < spike.homingEndsAt);
-    gameState.spikeClearTimeoutId = null;
     scheduleNextSpike();
-  }, visibleMs);
+  });
 }
 
 function clearSpike(cancelSchedule = true) {
@@ -870,10 +930,14 @@ function clearSpike(cancelSchedule = true) {
     window.clearTimeout(gameState.spikeClearTimeoutId);
     gameState.spikeClearTimeoutId = null;
   }
+  delete gameState.pausedTimers.spikeClearTimeoutId;
 
   if (cancelSchedule && gameState.spikeTimeoutId) {
     window.clearTimeout(gameState.spikeTimeoutId);
     gameState.spikeTimeoutId = null;
+  }
+  if (cancelSchedule) {
+    delete gameState.pausedTimers.spikeTimeoutId;
   }
 }
 
@@ -884,8 +948,13 @@ function prepareMovingSpikes(spikes = gameState.activeSpikes) {
     !DEBUG_FLAGS.forceMovingSpikes &&
     (
       gameState.difficulty !== "hard" ||
-      gameState.level < GAME_CONFIG.spikes.moving.levelMin ||
-      gameState.level > GAME_CONFIG.spikes.moving.levelMax
+      (
+        !isBossLevel() &&
+        (
+          gameState.level < GAME_CONFIG.spikes.moving.levelMin ||
+          gameState.level > GAME_CONFIG.spikes.moving.levelMax
+        )
+      )
     )
   ) {
     return;
@@ -896,7 +965,12 @@ function prepareMovingSpikes(spikes = gameState.activeSpikes) {
     return;
   }
 
-  const movingCount = Math.max(1, Math.ceil(eligibleSpikes.length * GAME_CONFIG.spikes.moving.ratio));
+  const movingRatio = getMovingSpikeRatio();
+  if (movingRatio <= 0) {
+    return;
+  }
+
+  const movingCount = Math.max(1, Math.ceil(eligibleSpikes.length * movingRatio));
   shuffleArray(eligibleSpikes).slice(0, movingCount).forEach((spike) => {
     const direction = getSpikeMoveDirection(spike.side);
     const distance = countForwardPathCells(spike);
@@ -942,7 +1016,7 @@ function prepareHomingSpikes(spikes = gameState.activeSpikes) {
       !DEBUG_FLAGS.forceHomingSpikes &&
       (
         gameState.difficulty !== "hard" ||
-        gameState.level < GAME_CONFIG.spikes.homing.levelMin
+        (!isBossLevel() && gameState.level < GAME_CONFIG.spikes.homing.levelMin)
       )
     )
   ) {
@@ -950,7 +1024,12 @@ function prepareHomingSpikes(spikes = gameState.activeSpikes) {
   }
 
   const homingCandidates = spikes.filter((spike) => !spike.isHoming);
-  const homingCount = Math.max(1, Math.ceil(homingCandidates.length * GAME_CONFIG.spikes.homing.ratio));
+  const homingRatio = getHomingSpikeRatio();
+  if (homingCandidates.length === 0 || homingRatio <= 0) {
+    return;
+  }
+
+  const homingCount = Math.max(1, Math.ceil(homingCandidates.length * homingRatio));
   shuffleArray([...homingCandidates]).slice(0, homingCount).forEach((spike) => {
     const pathCell = getSpikePathCell(spike);
     spike.currentX = pathCell.x;
@@ -1427,7 +1506,7 @@ function spawnLifeTokenForLevel() {
     spawnedAt: now,
     expiresAt: now + GAME_CONFIG.tokens.life.durationMs
   };
-  gameState.lifeTokenTimeoutId = window.setTimeout(clearLifeToken, GAME_CONFIG.tokens.life.durationMs);
+  scheduleTrackedTimeout("lifeTokenTimeoutId", GAME_CONFIG.tokens.life.durationMs, clearLifeToken);
 }
 
 function clearLifeToken() {
@@ -1437,6 +1516,7 @@ function clearLifeToken() {
     window.clearTimeout(gameState.lifeTokenTimeoutId);
     gameState.lifeTokenTimeoutId = null;
   }
+  delete gameState.pausedTimers.lifeTokenTimeoutId;
 }
 
 // Randomly spawn a temporary shield token from level 6 onward.
@@ -1475,7 +1555,7 @@ function spawnShieldTokenForLevel() {
     spawnedAt: now,
     expiresAt: now + GAME_CONFIG.tokens.shield.tokenDurationMs
   };
-  gameState.shieldTokenTimeoutId = window.setTimeout(clearShieldToken, GAME_CONFIG.tokens.shield.tokenDurationMs);
+  scheduleTrackedTimeout("shieldTokenTimeoutId", GAME_CONFIG.tokens.shield.tokenDurationMs, clearShieldToken);
 }
 
 function clearShieldToken() {
@@ -1485,19 +1565,16 @@ function clearShieldToken() {
     window.clearTimeout(gameState.shieldTokenTimeoutId);
     gameState.shieldTokenTimeoutId = null;
   }
+  delete gameState.pausedTimers.shieldTokenTimeoutId;
 }
 
 function activateShield() {
   gameState.shieldActiveUntil = performance.now() + GAME_CONFIG.tokens.shield.effectDurationMs;
 
-  if (gameState.shieldTimeoutId) {
-    window.clearTimeout(gameState.shieldTimeoutId);
-  }
-
-  gameState.shieldTimeoutId = window.setTimeout(() => {
+  scheduleTrackedTimeout("shieldTimeoutId", GAME_CONFIG.tokens.shield.effectDurationMs, () => {
     clearShieldEffect();
     playShieldExpireSound();
-  }, GAME_CONFIG.tokens.shield.effectDurationMs);
+  });
 }
 
 function clearShieldEffect() {
@@ -1507,6 +1584,74 @@ function clearShieldEffect() {
     window.clearTimeout(gameState.shieldTimeoutId);
     gameState.shieldTimeoutId = null;
   }
+  delete gameState.pausedTimers.shieldTimeoutId;
+}
+
+function scheduleTrackedTimeout(timerKey, delay, callback) {
+  clearTrackedTimeout(timerKey);
+  gameState[timerKey] = window.setTimeout(() => {
+    gameState[timerKey] = null;
+    delete gameState.pausedTimers[timerKey];
+    callback();
+  }, delay);
+  gameState.pausedTimers[timerKey] = {
+    delay,
+    startedAt: performance.now(),
+    callback
+  };
+}
+
+function clearTrackedTimeout(timerKey) {
+  if (gameState[timerKey]) {
+    window.clearTimeout(gameState[timerKey]);
+    gameState[timerKey] = null;
+  }
+  delete gameState.pausedTimers[timerKey];
+}
+
+function pauseTrackedTimers() {
+  const now = performance.now();
+  Object.entries(gameState.pausedTimers).forEach(([timerKey, timer]) => {
+    if (!gameState[timerKey]) {
+      return;
+    }
+
+    timer.remaining = Math.max(timer.delay - (now - timer.startedAt), 0);
+    window.clearTimeout(gameState[timerKey]);
+    gameState[timerKey] = null;
+  });
+}
+
+function resumeTrackedTimers() {
+  Object.entries(gameState.pausedTimers).forEach(([timerKey, timer]) => {
+    if (gameState[timerKey]) {
+      return;
+    }
+
+    scheduleTrackedTimeout(timerKey, timer.remaining ?? timer.delay, timer.callback);
+  });
+}
+
+function shiftActiveExpirations(duration) {
+  if (gameState.lifeToken) {
+    gameState.lifeToken.spawnedAt += duration;
+    gameState.lifeToken.expiresAt += duration;
+  }
+
+  if (gameState.shieldToken) {
+    gameState.shieldToken.spawnedAt += duration;
+    gameState.shieldToken.expiresAt += duration;
+  }
+
+  if (gameState.shieldActiveUntil > 0) {
+    gameState.shieldActiveUntil += duration;
+  }
+
+  gameState.activeSpikes.forEach((spike) => {
+    if (spike.homingEndsAt) {
+      spike.homingEndsAt += duration;
+    }
+  });
 }
 
 function clearLevelTimers() {
@@ -1523,6 +1668,68 @@ function clearActiveRunState() {
   stopKeyboardControls();
   stopGameLoop();
   clearLevelTimers();
+  resetPauseState();
+}
+
+function pauseGame() {
+  if (!gameState.isGameRunning || gameState.page !== "game" || gameState.isPaused) {
+    return;
+  }
+
+  gameState.isPaused = true;
+  gameState.pausedAt = performance.now();
+  stopControlPress();
+  stopSwipeRepeat();
+  stopKeyboardControls();
+  stopGameLoop();
+  pauseTrackedTimers();
+  overlays.pause.hidden = false;
+}
+
+function resumeGame() {
+  if (!gameState.isPaused) {
+    return;
+  }
+
+  const pausedDuration = performance.now() - gameState.pausedAt;
+  shiftActiveExpirations(pausedDuration);
+
+  if (gameState.player.isMoving) {
+    gameState.player.moveStartedAt += pausedDuration;
+  }
+
+  gameState.isPaused = false;
+  gameState.pausedAt = 0;
+  overlays.pause.hidden = true;
+  resumeTrackedTimers();
+  gameState.lastFrameTime = performance.now();
+  updateGame();
+}
+
+function restartGameFromPause() {
+  overlays.pause.hidden = true;
+  resetPauseState();
+  startGame();
+}
+
+function backHomeFromPause() {
+  saveProgress();
+  overlays.pause.hidden = true;
+  clearActiveRunState();
+  showPage("home");
+}
+
+function resetPauseState() {
+  gameState.isPaused = false;
+  gameState.pausedAt = 0;
+  gameState.pausedTimers = {};
+  if (overlays.pause) {
+    overlays.pause.hidden = true;
+  }
+}
+
+function isInputBlocked() {
+  return gameState.isPaused || !overlays.tutorial.hidden;
 }
 
 function hasActiveShield() {
@@ -1533,40 +1740,35 @@ function clearVisualEffects() {
   clearParticles();
   clearPlayerTrail();
 
-  if (gameState.levelTransitionTimeoutId) {
-    window.clearTimeout(gameState.levelTransitionTimeoutId);
-    gameState.levelTransitionTimeoutId = null;
-  }
+  clearTrackedTimeout("levelTransitionTimeoutId");
 
   overlays.levelTransition?.classList.remove("is-active");
 }
 
 function scheduleNextSpike() {
-  if (!gameState.isGameRunning || DEBUG_FLAGS.noSpikes) {
+  if (!gameState.isGameRunning || gameState.isPaused || DEBUG_FLAGS.noSpikes) {
     return;
   }
 
-  if (gameState.spikeTimeoutId) {
-    window.clearTimeout(gameState.spikeTimeoutId);
-  }
-
-  gameState.spikeTimeoutId = window.setTimeout(() => {
-    gameState.spikeTimeoutId = null;
+  scheduleTrackedTimeout("spikeTimeoutId", getSpikeSpawnDelay(), () => {
     spawnSpike();
-  }, getSpikeSpawnDelay());
+  });
 }
 
 // ===== HUD, Storage, and Settings =====
 // Sync level, lives, and score text.
 function updateHUD() {
-  gameState.highScore = Math.max(gameState.highScore, loadHighScore());
-  hud.homeHighScore.textContent = gameState.highScore;
+  gameState.highScore = loadHighScores();
+  const activeHighScore = gameState.highScore[gameState.difficulty] || 0;
+  hud.homeEasyHighScore.textContent = gameState.highScore.easy;
+  hud.homeHardHighScore.textContent = gameState.highScore.hard;
   hud.levelText.textContent = gameState.level;
   hud.livesText.textContent = gameState.lives;
-  hud.gameHighScore.textContent = gameState.highScore;
+  hud.gameHighScore.textContent = activeHighScore;
   hud.difficultyText.textContent = formatDifficulty(gameState.difficulty);
+  hud.bossFlag.hidden = !isBossLevel();
   hud.finalLevelText.textContent = gameState.level;
-  hud.endHighScore.textContent = gameState.highScore;
+  hud.endHighScore.textContent = activeHighScore;
 }
 
 // Persist unfinished run progress.
@@ -1647,6 +1849,66 @@ function getSpikeSpawnDelay() {
     : randomBetween(GAME_CONFIG.spikes.spawnDelayMs.easy.min, GAME_CONFIG.spikes.spawnDelayMs.easy.max);
 }
 
+function isBossLevel() {
+  return (
+    gameState.difficulty === "hard" &&
+    gameState.level > 0 &&
+    gameState.level % GAME_CONFIG.bossLevel.everyLevels === 0
+  );
+}
+
+function getBossPattern() {
+  if (!isBossLevel()) {
+    return null;
+  }
+
+  return GAME_CONFIG.bossLevel.wavePatterns[
+    gameState.bossWaveIndex % GAME_CONFIG.bossLevel.wavePatterns.length
+  ];
+}
+
+function advanceBossWave() {
+  if (isBossLevel()) {
+    gameState.bossWaveIndex += 1;
+  }
+}
+
+function getMovingSpikeRatio() {
+  const bossPattern = getBossPattern();
+  if (bossPattern) {
+    return bossPattern.movingRatio;
+  }
+
+  if (gameState.level < GAME_CONFIG.spikes.moving.levelMin) {
+    return 0;
+  }
+
+  const scaling = GAME_CONFIG.spikes.scaling;
+  const levelOffset = gameState.level - GAME_CONFIG.spikes.moving.levelMin;
+  return Math.min(
+    scaling.movingRatioMax,
+    scaling.movingRatioStart + levelOffset * scaling.movingRatioGrowth
+  );
+}
+
+function getHomingSpikeRatio() {
+  const bossPattern = getBossPattern();
+  if (bossPattern) {
+    return bossPattern.homingRatio;
+  }
+
+  if (gameState.level < GAME_CONFIG.spikes.homing.levelMin) {
+    return 0;
+  }
+
+  const scaling = GAME_CONFIG.spikes.scaling;
+  const levelOffset = gameState.level - GAME_CONFIG.spikes.homing.levelMin;
+  return Math.min(
+    scaling.homingRatioMax,
+    scaling.homingRatioStart + levelOffset * scaling.homingRatioGrowth
+  );
+}
+
 function getCurrentThemeKey() {
   if (gameState.level <= GAME_CONFIG.visual.themes.blue.maxLevel) return "blue";
   if (gameState.level <= GAME_CONFIG.visual.themes.orange.maxLevel) return "orange";
@@ -1704,10 +1966,9 @@ function showLevelTransition() {
     window.clearTimeout(gameState.levelTransitionTimeoutId);
   }
 
-  gameState.levelTransitionTimeoutId = window.setTimeout(() => {
+  scheduleTrackedTimeout("levelTransitionTimeoutId", GAME_CONFIG.visual.levelTransitionMs, () => {
     overlays.levelTransition.classList.remove("is-active");
-    gameState.levelTransitionTimeoutId = null;
-  }, GAME_CONFIG.visual.levelTransitionMs);
+  });
 }
 
 function clearSavedProgress() {
@@ -1728,16 +1989,59 @@ function updateContinueButton() {
   }
 }
 
+function shouldShowTutorial() {
+  return localStorage.getItem(STORAGE_KEYS.tutorialSeen) !== "true";
+}
+
+function showTutorialIfNeeded() {
+  if (!shouldShowTutorial()) {
+    return false;
+  }
+
+  overlays.tutorial.hidden = false;
+  return true;
+}
+
+function hideTutorial() {
+  localStorage.setItem(STORAGE_KEYS.tutorialSeen, "true");
+  overlays.tutorial.hidden = true;
+
+  if (gameState.isGameRunning && gameState.page === "game" && !gameState.animationFrameId) {
+    startLevelRuntime();
+  }
+}
+
 function saveHighScore() {
-  if (gameState.level > gameState.highScore) {
-    gameState.highScore = gameState.level;
-    localStorage.setItem(STORAGE_KEYS.highScore, String(gameState.highScore));
+  const currentHighScore = loadHighScore(gameState.difficulty);
+  if (gameState.level > currentHighScore) {
+    localStorage.setItem(getHighScoreKey(gameState.difficulty), String(gameState.level));
+    gameState.highScore = loadHighScores();
   }
   updateHUD();
 }
 
-function loadHighScore() {
-  return Number(localStorage.getItem(STORAGE_KEYS.highScore)) || 0;
+function loadHighScore(difficulty = gameState.difficulty) {
+  return Number(localStorage.getItem(getHighScoreKey(difficulty))) || 0;
+}
+
+function loadHighScores() {
+  return {
+    easy: loadHighScore("easy"),
+    hard: loadHighScore("hard")
+  };
+}
+
+function getHighScoreKey(difficulty) {
+  return difficulty === "hard" ? STORAGE_KEYS.highScoreHard : STORAGE_KEYS.highScoreEasy;
+}
+
+function migrateLegacyHighScore() {
+  const legacyScore = Number(localStorage.getItem(STORAGE_KEYS.highScore)) || 0;
+  if (legacyScore <= 0 || localStorage.getItem(STORAGE_KEYS.highScoreEasy)) {
+    return;
+  }
+
+  localStorage.setItem(STORAGE_KEYS.highScoreEasy, String(legacyScore));
 }
 
 function loadControlsVisibility() {
@@ -1826,10 +2130,12 @@ function randomFloat(min, max) {
 }
 
 function getSpikeCountForLevel() {
-  const level = gameState.level;
-  const range = GAME_CONFIG.spikes.countByLevel.find((item) => level <= item.maxLevel);
-
-  return randomBetween(range.min, range.max);
+  const scaling = GAME_CONFIG.spikes.scaling;
+  const baseCount = scaling.baseCount + Math.floor((gameState.level - 1) * scaling.countGrowthPerLevel);
+  const bossPattern = getBossPattern();
+  const scaledCount = bossPattern ? Math.ceil(baseCount * bossPattern.countMultiplier) : baseCount;
+  const spread = randomBetween(-scaling.randomSpread, scaling.randomSpread);
+  return Math.max(1, Math.min(scaling.maxCount, scaledCount + spread));
 }
 
 function shuffleArray(items) {
@@ -2039,7 +2345,7 @@ function bindSwipeControls() {
 }
 
 function handleSwipeMove(endX, endY) {
-  if (!gameState.isGameRunning || gameState.page !== "game") {
+  if (!gameState.isGameRunning || isInputBlocked() || gameState.page !== "game") {
     return;
   }
 
@@ -2093,7 +2399,7 @@ function stopSwipeRepeat() {
 }
 
 function scheduleSwipeRepeat() {
-  if (!gameState.swipe.activeDirection || !gameState.swipe.isTracking) {
+  if (gameState.isPaused || !gameState.swipe.activeDirection || !gameState.swipe.isTracking) {
     return;
   }
 
@@ -2141,6 +2447,10 @@ function endControlDrag(event, controls) {
 }
 
 function startControlPress(direction) {
+  if (isInputBlocked()) {
+    return;
+  }
+
   stopControlPress();
   gameState.controls.holdDirection = direction;
   movePlayer(direction);
@@ -2159,6 +2469,10 @@ function stopControlPress() {
 }
 
 function startKeyboardPress(direction) {
+  if (isInputBlocked()) {
+    return;
+  }
+
   if (!gameState.keyboard.heldDirections.includes(direction)) {
     gameState.keyboard.heldDirections.push(direction);
   }

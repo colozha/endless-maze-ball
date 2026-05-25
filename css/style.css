@@ -106,11 +106,22 @@ h2 {
   line-height: 1.6;
 }
 
+.score-grid {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 10px;
+  margin: 0 0 24px;
+}
+
 .score-box,
 .result-grid {
   display: grid;
   gap: 10px;
   margin: 0 0 24px;
+}
+
+.score-grid .score-box {
+  margin: 0;
 }
 
 .score-box,
@@ -232,7 +243,8 @@ h2 {
 }
 
 .hud-item,
-.control-toggle {
+.control-toggle,
+.pause-button {
   display: flex;
   align-items: center;
   justify-content: center;
@@ -248,6 +260,12 @@ h2 {
   min-width: 58px;
 }
 
+.boss-flag {
+  min-width: 60px;
+  color: #ffe36d;
+  text-transform: uppercase;
+}
+
 .control-toggle {
   width: 40px;
   height: 34px;
@@ -257,7 +275,25 @@ h2 {
   transition: background 160ms ease, transform 160ms ease;
 }
 
-.control-toggle:hover {
+.pause-button {
+  width: 34px;
+  height: 34px;
+  flex: 0 0 auto;
+  color: var(--text);
+  background: rgba(255, 255, 255, 0.08);
+  cursor: pointer;
+  transition: background 160ms ease, transform 160ms ease;
+}
+
+.pause-button span {
+  width: 14px;
+  height: 16px;
+  border-left: 5px solid rgba(255, 255, 255, 0.9);
+  border-right: 5px solid rgba(255, 255, 255, 0.9);
+}
+
+.control-toggle:hover,
+.pause-button:hover {
   background: rgba(255, 255, 255, 0.12);
   transform: translateY(-1px);
 }
@@ -335,6 +371,17 @@ h2 {
   height: 15px;
   background: linear-gradient(135deg, #70d8ff, #ffe36d);
   clip-path: polygon(58% 0, 12% 52%, 48% 52%, 34% 100%, 88% 40%, 53% 40%);
+}
+
+.icon-boss::before {
+  content: "";
+  position: absolute;
+  left: 1px;
+  top: 2px;
+  width: 15px;
+  height: 14px;
+  background: linear-gradient(135deg, #ffe36d, #ff7b3d);
+  clip-path: polygon(8% 100%, 18% 22%, 38% 58%, 50% 5%, 62% 58%, 82% 22%, 92% 100%);
 }
 
 .joystick-toggle-icon {
@@ -429,6 +476,61 @@ canvas {
   font-weight: 900;
   letter-spacing: -0.06em;
   text-shadow: 0 8px 28px rgba(0, 0, 0, 0.42);
+}
+
+.modal-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 20;
+  display: grid;
+  place-items: center;
+  padding: 18px;
+  background: rgba(2, 8, 18, 0.72);
+  backdrop-filter: blur(12px);
+}
+
+.modal-overlay[hidden] {
+  display: none;
+}
+
+.modal-card {
+  width: min(92vw, 430px);
+  padding: 28px;
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  border-radius: 28px;
+  background: linear-gradient(160deg, rgba(22, 36, 58, 0.96), rgba(7, 15, 28, 0.96));
+  box-shadow: 0 28px 90px rgba(0, 0, 0, 0.48);
+  text-align: center;
+}
+
+.modal-card h2 {
+  font-size: clamp(2.2rem, 10vw, 3.5rem);
+}
+
+.tutorial-grid {
+  display: grid;
+  gap: 10px;
+  margin: 20px 0 18px;
+  text-align: left;
+}
+
+.tutorial-grid div {
+  padding: 12px 14px;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 16px;
+  background: rgba(255, 255, 255, 0.07);
+}
+
+.tutorial-grid strong,
+.tutorial-grid span {
+  display: block;
+}
+
+.tutorial-grid span {
+  margin-top: 4px;
+  color: var(--muted);
+  font-size: 0.9rem;
+  line-height: 1.45;
 }
 
 .controls {

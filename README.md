@@ -24,8 +24,11 @@ Tidak ada framework atau library eksternal.
 - Maze random di setiap level.
 - Level tidak terbatas.
 - High score tersimpan di `localStorage`.
+- High score dipisah untuk Easy dan Hard.
 - Continue progress jika game belum berakhir.
 - Mode difficulty: Easy dan Hard.
+- Tutorial first-time untuk kontrol dan item.
+- Pause menu dengan resume, restart, dan back home.
 - Canvas responsif dengan rasio portrait.
 - Kontrol keyboard, joystick, dan swipe.
 - Sound effect untuk move, success, fail, shield pickup, dan shield expire.
@@ -53,12 +56,15 @@ Tidak ada framework atau library eksternal.
 - Semua fitur duri aktif.
 - Duri muncul setiap 3-7 detik.
 - Level 11-20 memiliki sebagian duri bergerak maju.
-- Level 21+ memiliki sebagian duri homing yang mengejar bola melalui jalur maze selama 10 detik.
-- Duri homing menghitung ulang jalur jika tersangkut dan arah segitiganya mengikuti arah gerakan.
+- Level 21+ memiliki sebagian duri homing yang mengejar bola melalui jalur maze selama 7 detik.
+- Duri homing punya warna warning berbeda, menghitung ulang jalur jika tersangkut, dan arah segitiganya mengikuti arah gerakan.
+- Setiap level kelipatan 10 menjadi Boss Level dengan pola hazard khusus.
+- Jumlah duri dan rasio hazard naik bertahap, bukan melonjak per rentang level besar.
 
 ## Item dan Hazard
 
 - Duri: mengurangi 1 nyawa jika terkena.
+- Duri homing: warna warning biru/cyan dan mengejar bola di mode Hard.
 - Life token: muncul di level kelipatan 7 dan menambah 1 nyawa.
 - Shield token: mulai level 6 punya peluang muncul 25%.
 - Shield aktif selama 10 detik dan membuat bola kebal dari duri.
@@ -81,10 +87,13 @@ Visual feedback tambahan:
 
 Game menggunakan `localStorage`.
 
-- `mazeBallHighScore`: high score level tertinggi.
+- `mazeBallHighScore`: legacy key yang dimigrasi ke Easy jika ada.
+- `mazeBallHighScoreEasy`: high score Easy.
+- `mazeBallHighScoreHard`: high score Hard.
 - `mazeBallProgress`: progress level, nyawa, dan difficulty.
 - `mazeBallControlsVisible`: status show/hide joystick.
 - `mazeBallDifficulty`: difficulty terakhir yang dipilih.
+- `mazeBallTutorialSeen`: status tutorial first-time.
 
 Progress dihapus saat Game Over atau saat memulai game baru.
 
@@ -96,6 +105,7 @@ Progress dihapus saat Game Over atau saat memulai game baru.
 - Sound effect berada di `js/audio.js`.
 - `script.js` memakai section header untuk memisahkan lifecycle, rendering, hazard, storage, audio, dan input.
 - Cleanup timer/input aktif memakai `clearActiveRunState()` dan `clearLevelTimers()`.
+- Pause memakai tracked timeout agar timer duri, token, shield, dan transition bisa dilanjutkan.
 - Debug canvas bisa diaktifkan dengan membuka `index.html?debug=1`.
 - Debug testing flags:
 

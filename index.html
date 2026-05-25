@@ -15,9 +15,15 @@
         <p class="description">
           Move the ball through a random maze, avoid the spikes, and reach the Finish to level up.
         </p>
-        <div class="score-box">
-          <span>High Score</span>
-          <strong id="homeHighScore">0</strong>
+        <div class="score-grid">
+          <div class="score-box">
+            <span>Easy High</span>
+            <strong id="homeEasyHighScore">0</strong>
+          </div>
+          <div class="score-box">
+            <span>Hard High</span>
+            <strong id="homeHardHighScore">0</strong>
+          </div>
         </div>
         <div class="difficulty-select" aria-label="Difficulty">
           <button class="difficulty-option is-active" type="button" data-difficulty="easy">Easy</button>
@@ -47,6 +53,13 @@
             <span class="hud-icon icon-mode" aria-hidden="true"></span>
             <strong id="difficultyText">Easy</strong>
           </div>
+          <div id="bossFlag" class="hud-item boss-flag" aria-label="Boss level" hidden>
+            <span class="hud-icon icon-boss" aria-hidden="true"></span>
+            <strong>Boss</strong>
+          </div>
+          <button id="pauseButton" class="pause-button" type="button" aria-label="Pause game">
+            <span aria-hidden="true"></span>
+          </button>
           <button id="controlsToggle" class="control-toggle" type="button" aria-label="Hide directional controls" aria-pressed="true">
             <strong id="controlsToggleIcon" class="joystick-toggle-icon" aria-hidden="true"></strong>
           </button>
@@ -68,6 +81,17 @@
 
           <div id="levelTransition" class="level-transition" aria-hidden="true">
             <span id="levelTransitionText">Level 1</span>
+          </div>
+        </div>
+
+        <div id="pauseOverlay" class="modal-overlay" hidden>
+          <div class="modal-card">
+            <p class="eyebrow">Paused</p>
+            <h2>Pause</h2>
+            <p class="description">Timers and controls are frozen until you resume.</p>
+            <button id="resumeButton" class="primary-button">Resume</button>
+            <button id="restartPauseButton" class="secondary-button">Restart</button>
+            <button id="homePauseButton" class="secondary-button">Back to Home</button>
           </div>
         </div>
       </div>
@@ -92,6 +116,21 @@
       </div>
     </section>
   </main>
+
+  <div id="tutorialOverlay" class="modal-overlay tutorial-overlay" hidden>
+    <div class="modal-card tutorial-card">
+      <p class="eyebrow">Quick Tutorial</p>
+      <h2>How to Play</h2>
+      <div class="tutorial-grid">
+        <div><strong>Keyboard</strong><span>Use Arrow keys or WASD.</span></div>
+        <div><strong>Joystick</strong><span>Drag it anywhere and hold a direction.</span></div>
+        <div><strong>Swipe</strong><span>Swipe and hold on the maze to keep moving.</span></div>
+        <div><strong>Life Token</strong><span>Red hearts add 1 life.</span></div>
+        <div><strong>Shield</strong><span>Blue shields block spike damage for a short time.</span></div>
+      </div>
+      <button id="tutorialDoneButton" class="primary-button">Got It</button>
+    </div>
+  </div>
 
   <script src="js/config.js"></script>
   <script src="js/audio.js"></script>
