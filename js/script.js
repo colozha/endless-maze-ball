@@ -583,19 +583,6 @@ function drawSpikes() {
     ctx.save();
     ctx.translate(center.x, center.y);
     ctx.rotate(angle);
-    if (spike.isHoming) {
-      const pulse = 0.62 + Math.sin(performance.now() / 130) * 0.18;
-      ctx.shadowColor = theme.homingGlow;
-      ctx.shadowBlur = rect.size * 0.42;
-      ctx.strokeStyle = theme.homingGlow;
-      ctx.lineWidth = Math.max(2, rect.size * 0.07);
-      ctx.globalAlpha = pulse;
-      ctx.beginPath();
-      ctx.arc(0, 0, rect.size * 0.42, 0, Math.PI * 2);
-      ctx.stroke();
-      ctx.globalAlpha = 1;
-    }
-
     ctx.fillStyle = spike.isHoming ? theme.homingSpike : theme.spike;
     ctx.beginPath();
     ctx.moveTo(length, 0);
