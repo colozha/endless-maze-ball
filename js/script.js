@@ -569,6 +569,12 @@ function drawSpikes() {
   gameState.activeSpikes.forEach((spike) => {
     const drawPosition = getSpikeDrawPosition(spike);
     const rect = gridRect(drawPosition.x, drawPosition.y);
+
+    if (!spike.isMoving && !spike.isHoming) {
+      drawStaticWallSpike(rect, spike.side, theme.spike);
+      return;
+    }
+
     const center = gridCenter(drawPosition.x, drawPosition.y);
     const angle = getSpikeFacingAngle(spike);
     const length = rect.size * 0.46;
@@ -599,6 +605,35 @@ function drawSpikes() {
     ctx.fill();
     ctx.restore();
   });
+}
+
+function drawStaticWallSpike(rect, side, color) {
+  const pad = rect.size * 0.16;
+  const depth = rect.size * 0.52;
+
+  ctx.fillStyle = color;
+  ctx.beginPath();
+
+  if (side === "top") {
+    ctx.moveTo(rect.x + pad, rect.y);
+    ctx.lineTo(rect.x + rect.size - pad, rect.y);
+    ctx.lineTo(rect.x + rect.size / 2, rect.y + depth);
+  } else if (side === "bottom") {
+    ctx.moveTo(rect.x + pad, rect.y + rect.size);
+    ctx.lineTo(rect.x + rect.size - pad, rect.y + rect.size);
+    ctx.lineTo(rect.x + rect.size / 2, rect.y + rect.size - depth);
+  } else if (side === "left") {
+    ctx.moveTo(rect.x, rect.y + pad);
+    ctx.lineTo(rect.x, rect.y + rect.size - pad);
+    ctx.lineTo(rect.x + depth, rect.y + rect.size / 2);
+  } else {
+    ctx.moveTo(rect.x + rect.size, rect.y + pad);
+    ctx.lineTo(rect.x + rect.size, rect.y + rect.size - pad);
+    ctx.lineTo(rect.x + rect.size - depth, rect.y + rect.size / 2);
+  }
+
+  ctx.closePath();
+  ctx.fill();
 }
 
 function drawLifeToken() {
