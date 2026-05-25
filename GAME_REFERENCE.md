@@ -27,6 +27,7 @@ State disimpan di object `gameState` dalam `script.js`.
 - `level`: level aktif.
 - `lives`: jumlah nyawa aktif. Bisa lebih dari 5 jika mengambil token nyawa.
 - `maxLives`: nilai awal nyawa, yaitu 5.
+- `difficulty`: mode game aktif, `easy` atau `hard`.
 - `highScore`: level tertinggi dari `localStorage`.
 - `maze`: grid labirin.
 - `player`: posisi, target, animasi, dan queue gerakan bola.
@@ -82,7 +83,8 @@ Duri tidak muncul di Start, Finish, atau posisi player.
 
 Interval spawn duri:
 
-- Setiap `3-7 detik`.
+- Easy: setiap `5-10 detik`.
+- Hard: setiap `3-7 detik`.
 - Duri aktif selama `2-4 detik`.
 
 Jumlah duri berdasarkan level:
@@ -104,7 +106,7 @@ Jika bola terkena duri:
 
 ### Duri Bergerak Level 11-20
 
-Pada level `11-20`, sebagian duri bisa bergerak.
+Pada level `11-20`, sebagian duri bisa bergerak hanya di mode Hard.
 
 - Berlaku setiap fase duri muncul ke arena.
 - Duri yang memenuhi syarat adalah duri yang menghadap lebih dari 1 grid kosong.
@@ -117,7 +119,7 @@ Pada level `11-20`, sebagian duri bisa bergerak.
 
 ### Duri Homing Level 21+
 
-Pada level `21+`, sebagian duri bergerak mengejar bola.
+Pada level `21+`, sebagian duri bergerak mengejar bola hanya di mode Hard.
 
 - Berlaku setiap fase duri muncul ke arena.
 - Game memilih sekitar `10%` dari semua duri aktif secara acak.
@@ -156,17 +158,29 @@ Mulai level 6, setiap level punya probabilitas `25%` untuk memunculkan token shi
 Storage yang digunakan:
 
 - `mazeBallHighScore`: level tertinggi yang pernah dicapai.
-- `mazeBallProgress`: progress level dan lives saat game belum selesai.
+- `mazeBallProgress`: progress level, lives, dan difficulty saat game belum selesai.
 - `mazeBallControlsVisible`: state show/hide joystick.
+- `mazeBallDifficulty`: mode difficulty terakhir yang dipilih.
 
 Progress:
 
 - Disimpan saat game masih berjalan.
-- Berisi `level` dan `lives`.
-- Home menampilkan `Continue Level X` jika progress ada.
+- Berisi `level`, `lives`, dan `difficulty`.
+- Home menampilkan `Continue Easy/Hard Level X` jika progress ada.
 - `Start Game` menghapus progress lama dan mulai dari level 1.
 - Game Over menghapus progress.
-- Continue membuat maze baru pada level tersimpan dengan nyawa tersimpan.
+- Continue membuat maze baru pada level tersimpan dengan nyawa dan difficulty tersimpan.
+
+## Difficulty
+
+Game punya dua mode difficulty saat memulai game baru:
+
+- Easy: tidak ada duri bergerak atau homing.
+- Easy: duri spawn setiap `5-10 detik`.
+- Hard: memakai semua fitur duri seperti kondisi penuh saat ini.
+- Hard: duri spawn setiap `3-7 detik`.
+- Jika progress lama tidak punya data difficulty, Continue memakai default Easy.
+- Header Game Page menampilkan flag mode aktif.
 
 ## Audio
 

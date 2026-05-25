@@ -151,6 +151,33 @@ h2 {
   transition: transform 160ms ease, filter 160ms ease, background 160ms ease;
 }
 
+.difficulty-select {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 8px;
+  margin: 0 0 12px;
+}
+
+.difficulty-option {
+  min-height: 44px;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 16px;
+  color: var(--text);
+  font-weight: 900;
+  background: rgba(255, 255, 255, 0.08);
+  transition: transform 160ms ease, background 160ms ease, color 160ms ease;
+}
+
+.difficulty-option:hover {
+  transform: translateY(-1px);
+  background: rgba(255, 255, 255, 0.14);
+}
+
+.difficulty-option.is-active {
+  color: #041316;
+  background: linear-gradient(135deg, #70d8ff, #ffe36d);
+}
+
 .primary-button {
   background: linear-gradient(135deg, var(--button), #ffe36d);
 }
@@ -181,7 +208,7 @@ h2 {
 
 .hud {
   display: grid;
-  grid-template-columns: repeat(4, 1fr);
+  grid-template-columns: repeat(5, 1fr);
   gap: 7px;
 }
 

@@ -19,6 +19,10 @@
           <span>High Score</span>
           <strong id="homeHighScore">0</strong>
         </div>
+        <div class="difficulty-select" aria-label="Difficulty">
+          <button class="difficulty-option is-active" type="button" data-difficulty="easy">Easy</button>
+          <button class="difficulty-option" type="button" data-difficulty="hard">Hard</button>
+        </div>
         <button id="continueButton" class="secondary-button continue-button">Continue Level</button>
         <button id="startButton" class="primary-button">Start Game</button>
       </div>
@@ -38,6 +42,10 @@
           <div>
             <span>High</span>
             <strong id="gameHighScore">0</strong>
+          </div>
+          <div class="difficulty-flag">
+            <span>Mode</span>
+            <strong id="difficultyText">Easy</strong>
           </div>
           <button id="controlsToggle" class="control-toggle" type="button" aria-label="Hide directional controls" aria-pressed="true">
             <span>Controls</span>

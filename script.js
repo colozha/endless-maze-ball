@@ -11,6 +11,7 @@ const hud = {
   levelText: document.getElementById("levelText"),
   livesText: document.getElementById("livesText"),
   gameHighScore: document.getElementById("gameHighScore"),
+  difficultyText: document.getElementById("difficultyText"),
   finalLevelText: document.getElementById("finalLevelText"),
   endHighScore: document.getElementById("endHighScore"),
   controlsToggleIcon: document.getElementById("controlsToggleIcon")
@@ -30,6 +31,7 @@ const gameState = {
   level: 1,
   lives: 5,
   maxLives: 5,
+  difficulty: "easy",
   highScore: 0,
   maze: [],
   player: {
@@ -102,8 +104,10 @@ const gameState = {
 // Initialize saved state, UI, and first render.
 function initGame() {
   gameState.highScore = loadHighScore();
+  gameState.difficulty = loadSelectedDifficulty();
   gameState.controls.isVisible = loadControlsVisibility();
   updateControlsVisibility();
+  updateDifficultySelection();
   updateHUD();
   updateContinueButton();
   showPage("home");
@@ -130,6 +134,14 @@ function bindEvents() {
     showPage("home");
   });
   document.getElementById("controlsToggle").addEventListener("click", toggleControlsVisibility);
+  document.querySelectorAll("[data-difficulty]").forEach((button) => {
+    button.addEventListener("click", () => {
+      gameState.difficulty = button.dataset.difficulty;
+      saveSelectedDifficulty();
+      updateDifficultySelection();
+      updateHUD();
+    });
+  });
 
   window.addEventListener("resize", () => {
     resizeCanvas();
@@ -222,6 +234,8 @@ function startGame() {
   stopGameLoop();
   gameState.level = 1;
   gameState.lives = gameState.maxLives;
+  gameState.difficulty = loadSelectedDifficulty();
+  updateDifficultySelection();
   gameState.isGameRunning = true;
   generateMaze();
   saveProgress();
@@ -251,6 +265,9 @@ function continueGame() {
   stopGameLoop();
   gameState.level = progress.level;
   gameState.lives = progress.lives;
+  gameState.difficulty = progress.difficulty || "easy";
+  saveSelectedDifficulty();
+  updateDifficultySelection();
   gameState.isGameRunning = true;
   generateMaze();
   saveProgress();
@@ -802,7 +819,7 @@ function clearSpike(cancelSchedule = true) {
 
 // Mark eligible level 11-20 spikes to move forward.
 function prepareMovingSpikes() {
-  if (gameState.level < 11 || gameState.level > 20) {
+  if (gameState.difficulty !== "hard" || gameState.level < 11 || gameState.level > 20) {
     return;
   }
 
@@ -873,7 +890,7 @@ function updateMovingSpikes(deltaSeconds) {
 
 // Mark random level 21+ spikes to chase the player.
 function prepareHomingSpikes() {
-  if (gameState.level < 21 || gameState.activeSpikes.length === 0) {
+  if (gameState.difficulty !== "hard" || gameState.level < 21 || gameState.activeSpikes.length === 0) {
     return;
   }
 
@@ -1034,7 +1051,7 @@ function scheduleNextSpike() {
   gameState.spikeTimeoutId = window.setTimeout(() => {
     gameState.spikeTimeoutId = null;
     spawnSpike();
-  }, randomBetween(3000, 7000));
+  }, getSpikeSpawnDelay());
 }
 
 // Sync level, lives, and score text.
@@ -1044,6 +1061,7 @@ function updateHUD() {
   hud.levelText.textContent = gameState.level;
   hud.livesText.textContent = gameState.lives;
   hud.gameHighScore.textContent = gameState.highScore;
+  hud.difficultyText.textContent = formatDifficulty(gameState.difficulty);
   hud.finalLevelText.textContent = gameState.level;
   hud.endHighScore.textContent = gameState.highScore;
 }
@@ -1058,7 +1076,8 @@ function saveProgress() {
     "mazeBallProgress",
     JSON.stringify({
       level: gameState.level,
-      lives: gameState.lives
+      lives: gameState.lives,
+      difficulty: gameState.difficulty
     })
   );
   updateContinueButton();
@@ -1083,6 +1102,31 @@ function loadSavedProgress() {
   }
 }
 
+function loadSelectedDifficulty() {
+  const savedDifficulty = localStorage.getItem("mazeBallDifficulty");
+  return savedDifficulty === "hard" ? "hard" : "easy";
+}
+
+function saveSelectedDifficulty() {
+  localStorage.setItem("mazeBallDifficulty", gameState.difficulty);
+}
+
+function updateDifficultySelection() {
+  document.querySelectorAll("[data-difficulty]").forEach((button) => {
+    button.classList.toggle("is-active", button.dataset.difficulty === gameState.difficulty);
+  });
+}
+
+function formatDifficulty(difficulty) {
+  return difficulty === "hard" ? "Hard" : "Easy";
+}
+
+function getSpikeSpawnDelay() {
+  return gameState.difficulty === "hard"
+    ? randomBetween(3000, 7000)
+    : randomBetween(5000, 10000);
+}
+
 function clearSavedProgress() {
   localStorage.removeItem("mazeBallProgress");
   updateContinueButton();
@@ -1097,7 +1141,7 @@ function updateContinueButton() {
   buttons.continueButton.hidden = !progress;
 
   if (progress) {
-    buttons.continueButton.textContent = `Continue Level ${progress.level}`;
+    buttons.continueButton.textContent = `Continue ${formatDifficulty(progress.difficulty || "easy")} Level ${progress.level}`;
   }
 }
 
