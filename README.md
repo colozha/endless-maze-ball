@@ -13,8 +13,10 @@ Tidak ada framework atau library eksternal.
 ## Struktur File
 
 - `index.html`: struktur halaman Home, Game, dan Game Over.
-- `style.css`: styling, layout responsif, HUD, joystick, dan tampilan game.
-- `script.js`: logika game, maze generation, input, rendering canvas, audio, dan storage.
+- `css/style.css`: styling, layout responsif, HUD, joystick, dan tampilan game.
+- `js/config.js`: config balancing, constants, debug flag, dan storage keys.
+- `js/audio.js`: sound effect berbasis Web Audio API.
+- `js/script.js`: logika game utama, maze generation, input, rendering canvas, hazard, dan storage.
 - `GAME_REFERENCE.md`: dokumentasi teknis ringkas untuk AI agent atau developer.
 
 ## Fitur Utama
@@ -71,10 +73,27 @@ Progress dihapus saat Game Over atau saat memulai game baru.
 
 ## Catatan Developer
 
+- Gameplay balancing utama berada di `GAME_CONFIG` dalam `js/config.js`.
+- Key `localStorage` berada di `STORAGE_KEYS` dalam `js/config.js`.
+- Mapping keyboard berada di `DIRECTION_BY_KEY` dalam `js/config.js`.
+- Sound effect berada di `js/audio.js`.
+- `script.js` memakai section header untuk memisahkan lifecycle, rendering, hazard, storage, audio, dan input.
+- Cleanup timer/input aktif memakai `clearActiveRunState()` dan `clearLevelTimers()`.
+- Debug canvas bisa diaktifkan dengan membuka `index.html?debug=1`.
+- Debug testing flags:
+
+```text
+index.html?debug=1&level=21&difficulty=hard&forceHoming=1
+index.html?debug=1&level=11&difficulty=hard&forceMoving=1
+index.html?debug=1&forceLifeToken=1&forceShieldToken=1
+index.html?debug=1&noSpike=1
+index.html?debug=1&invincible=1
+```
+
 - Jalankan validasi JavaScript dengan:
 
 ```bash
-node --check script.js
+node --check js/script.js
 ```
 
 - Jangan menambahkan dependency eksternal kecuali memang diperlukan.

@@ -5,8 +5,10 @@ Dokumen ini adalah referensi singkat untuk AI agent sebelum mengubah game.
 ## Struktur File
 
 - `index.html`: struktur halaman Home, Game, dan End.
-- `style.css`: layout, HUD, canvas panel, joystick, dan responsive UI.
-- `script.js`: semua logika game, rendering canvas, input, state, audio, dan storage.
+- `css/style.css`: layout, HUD, canvas panel, joystick, dan responsive UI.
+- `js/config.js`: config balancing, constants, debug flag, dan storage keys.
+- `js/audio.js`: Web Audio API dan sound effect.
+- `js/script.js`: logika game utama, rendering canvas, input, state, storage, hazard, dan token.
 
 ## Konsep Game
 
@@ -23,6 +25,11 @@ Saat Finish dicapai, level naik dan labirin dibuat ulang secara random.
 ## State Utama
 
 State disimpan di object `gameState` dalam `script.js`.
+
+Angka balancing utama disimpan di `GAME_CONFIG` dalam `js/config.js`.
+Key `localStorage` disimpan di `STORAGE_KEYS` dalam `js/config.js`.
+Mapping keyboard disimpan di `DIRECTION_BY_KEY` dalam `js/config.js`.
+`script.js` dibagi dengan section header agar agent mudah menemukan area kerja.
 
 - `level`: level aktif.
 - `lives`: jumlah nyawa aktif. Bisa lebih dari 5 jika mengambil token nyawa.
@@ -197,6 +204,20 @@ Game dirender dengan `<canvas>`.
 Semua posisi dihitung dari grid internal, bukan pixel mentah browser.
 Canvas resize mengikuti ukuran container agar collision tetap akurat.
 
+Debug mode bisa diaktifkan dengan query param `?debug=1`.
+Saat aktif, canvas menampilkan grid line dan panel kecil berisi state runtime.
+
+Debug testing flags:
+
+- `level=NUMBER`: start game dari level tertentu.
+- `difficulty=easy|hard`: paksa difficulty saat Start Game.
+- `forceMoving=1`: paksa fitur moving spike aktif jika ada spike eligible.
+- `forceHoming=1`: paksa sebagian spike menjadi homing.
+- `forceLifeToken=1`: paksa life token spawn.
+- `forceShieldToken=1`: paksa shield token spawn.
+- `noSpike=1`: matikan spawn spike.
+- `invincible=1`: bola kebal dari kehilangan nyawa akibat duri.
+
 Objek yang dirender:
 
 - Maze walls.
@@ -212,7 +233,9 @@ Objek yang dirender:
 - Jangan tambahkan framework atau library eksternal.
 - Pertahankan single-page flow dengan section Home, Game, dan End.
 - Jangan ubah grid size tanpa meninjau maze generation dan collision.
+- Ubah angka balancing dari `GAME_CONFIG`, bukan dari magic number di tengah fungsi.
+- Ubah key storage dari `STORAGE_KEYS`, bukan string literal langsung.
 - Jika mengubah input, pastikan keyboard, joystick, dan swipe tetap berjalan.
 - Jika mengubah state, pastikan `updateHUD()` dan `localStorage` tetap sinkron.
-- Jika menambah timeout atau interval, pastikan dibersihkan saat restart, game over, atau pindah halaman.
-- Jalankan `node --check script.js` setelah mengubah JavaScript.
+- Jika menambah timeout atau interval, masukkan cleanup ke `clearActiveRunState()` atau `clearLevelTimers()` sesuai lifecycle.
+- Jalankan `node --check js/script.js` setelah mengubah JavaScript.
