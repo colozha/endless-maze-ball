@@ -31,25 +31,24 @@
     <section id="gamePage" class="page">
       <div class="game-frame">
         <div class="hud">
-          <div>
-            <span>Level</span>
+          <div class="hud-item hud-level" aria-label="Level">
+            <span class="hud-icon icon-level" aria-hidden="true"></span>
             <strong id="levelText">1</strong>
           </div>
-          <div>
-            <span>Lives</span>
+          <div class="hud-item hud-lives" aria-label="Lives">
+            <span class="hud-icon icon-lives" aria-hidden="true"></span>
             <strong id="livesText">5</strong>
           </div>
-          <div>
-            <span>High</span>
+          <div class="hud-item hud-high" aria-label="High score">
+            <span class="hud-icon icon-high" aria-hidden="true"></span>
             <strong id="gameHighScore">0</strong>
           </div>
-          <div class="difficulty-flag">
-            <span>Mode</span>
+          <div class="hud-item difficulty-flag" aria-label="Difficulty mode">
+            <span class="hud-icon icon-mode" aria-hidden="true"></span>
             <strong id="difficultyText">Easy</strong>
           </div>
           <button id="controlsToggle" class="control-toggle" type="button" aria-label="Hide directional controls" aria-pressed="true">
-            <span>Controls</span>
-            <strong id="controlsToggleIcon" class="toggle-icon" aria-hidden="true"></strong>
+            <strong id="controlsToggleIcon" class="joystick-toggle-icon" aria-hidden="true"></strong>
           </button>
         </div>
 
