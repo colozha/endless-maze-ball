@@ -29,6 +29,8 @@ Tidak ada framework atau library eksternal.
 - Canvas responsif dengan rasio portrait.
 - Kontrol keyboard, joystick, dan swipe.
 - Sound effect untuk move, success, fail, shield pickup, dan shield expire.
+- Tema visual per level: blue, orange hazard, dan neon danger.
+- Animasi token, particle pickup, shield pulse, player trail, dan transition saat naik level.
 
 ## Kontrol
 
@@ -59,6 +61,20 @@ Tidak ada framework atau library eksternal.
 - Life token: muncul di level kelipatan 7 dan menambah 1 nyawa.
 - Shield token: mulai level 6 punya peluang muncul 25%.
 - Shield aktif selama 10 detik dan membuat bola kebal dari duri.
+
+## Visual Themes
+
+- Level 1-10: Blue Maze.
+- Level 11-20: Orange Hazard.
+- Level 21+: Neon Danger.
+
+Visual feedback tambahan:
+
+- Token memiliki animasi spawn dan despawn.
+- Token pickup memunculkan particle kecil.
+- Shield aktif punya efek pulse di sekitar bola.
+- Bola punya trail halus saat bergerak.
+- Saat naik level, muncul transition overlay singkat.
 
 ## Progress dan Storage
 

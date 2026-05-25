@@ -54,7 +54,7 @@ const GAME_CONFIG = {
     homing: {
       levelMin: 21,
       ratio: 0.1,
-      durationMs: 5000,
+      durationMs: 10000,
       speedCellsPerSecond: 3.2
     },
     countByLevel: [
@@ -77,6 +77,42 @@ const GAME_CONFIG = {
       spawnChance: 0.25,
       tokenDurationMs: 15000,
       effectDurationMs: 10000
+    }
+  },
+  visual: {
+    tokenSpawnMs: 260,
+    tokenDespawnMs: 2000,
+    particleCount: 14,
+    particleDurationMs: 520,
+    trailMaxPoints: 10,
+    trailDurationMs: 260,
+    shieldPulseMs: 520,
+    levelTransitionMs: 900,
+    themes: {
+      blue: {
+        minLevel: 1,
+        maxLevel: 10,
+        path: "#dbe7f5",
+        wallStart: "#355b85",
+        wallEnd: "#1f3755",
+        spike: "#ff4f6d"
+      },
+      orange: {
+        minLevel: 11,
+        maxLevel: 20,
+        path: "#f4e4cf",
+        wallStart: "#9a5a2c",
+        wallEnd: "#3a2418",
+        spike: "#ff6b3d"
+      },
+      neon: {
+        minLevel: 21,
+        maxLevel: Infinity,
+        path: "#101622",
+        wallStart: "#3043ff",
+        wallEnd: "#111735",
+        spike: "#ff2bd6"
+      }
     }
   }
 };

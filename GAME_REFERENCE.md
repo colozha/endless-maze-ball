@@ -42,6 +42,8 @@ Mapping keyboard disimpan di `DIRECTION_BY_KEY` dalam `js/config.js`.
 - `lifeToken`: token nyawa aktif jika ada.
 - `shieldToken`: token shield aktif jika ada.
 - `shieldActiveUntil`: waktu berakhirnya efek shield pada bola.
+- `particles`: particle pickup token aktif.
+- `playerTrail`: titik trail bola saat bergerak.
 - `controls`: state joystick, drag, visibility, dan hold input.
 - `swipe`: state pointer swipe dan swipe-hold.
 - `keyboard`: state keyboard hold.
@@ -130,8 +132,10 @@ Pada level `21+`, sebagian duri bergerak mengejar bola hanya di mode Hard.
 
 - Berlaku setiap fase duri muncul ke arena.
 - Game memilih sekitar `10%` dari semua duri aktif secara acak.
-- Duri terpilih bergerak mengejar posisi bola selama `5 detik`.
-- Setelah 5 detik, duri homing menghilang.
+- Duri terpilih bergerak mengejar posisi bola selama `10 detik`.
+- Duri homing mengikuti jalur kosong maze dengan pathfinding grid.
+- Duri homing tidak boleh menembus dinding.
+- Setelah 10 detik, duri homing menghilang.
 - Efek collision tetap sama: bola kehilangan 1 nyawa jika menyentuh duri homing.
 - Jika shield aktif, bola tetap kebal terhadap duri homing.
 
@@ -222,11 +226,27 @@ Objek yang dirender:
 
 - Maze walls.
 - Player ball.
+- Player trail.
 - Start icon.
 - Finish icon.
 - Spikes.
 - Life token heart.
 - Shield token.
+- Pickup particles.
+
+## Visual Effects
+
+Config visual berada di `GAME_CONFIG.visual`.
+
+- Level `1-10`: blue maze theme.
+- Level `11-20`: orange hazard theme.
+- Level `21+`: neon danger theme.
+- Token memakai animasi spawn scale/opacity.
+- Token berkedip dan fade saat mendekati waktu hilang.
+- Pickup token memunculkan particle sesuai warna token.
+- Shield aktif memakai stroke pulse di sekitar bola.
+- Bola memiliki trail halus saat bergerak.
+- Naik level memunculkan transition overlay singkat.
 
 ## Catatan Untuk AI Agent
 

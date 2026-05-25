@@ -202,6 +202,21 @@ h2 {
   border-radius: 28px;
   background: var(--panel);
   box-shadow: 0 26px 80px rgba(0, 0, 0, 0.45);
+  transition: box-shadow 260ms ease, border-color 260ms ease;
+}
+
+.game-frame.theme-blue {
+  box-shadow: 0 26px 80px rgba(90, 182, 255, 0.18);
+}
+
+.game-frame.theme-orange {
+  border-color: rgba(255, 153, 74, 0.28);
+  box-shadow: 0 26px 80px rgba(255, 153, 74, 0.22);
+}
+
+.game-frame.theme-neon {
+  border-color: rgba(0, 255, 204, 0.28);
+  box-shadow: 0 26px 80px rgba(0, 255, 204, 0.2);
 }
 
 .hud {
@@ -385,6 +400,35 @@ canvas {
 
 .controls.controls-hidden {
   display: none;
+}
+
+.level-transition {
+  position: absolute;
+  inset: 0;
+  z-index: 4;
+  display: grid;
+  place-items: center;
+  border-radius: inherit;
+  color: white;
+  background:
+    radial-gradient(circle at 50% 45%, rgba(255, 255, 255, 0.26), transparent 24%),
+    rgba(4, 13, 24, 0.62);
+  opacity: 0;
+  pointer-events: none;
+  transform: scale(1.02);
+  transition: opacity 260ms ease, transform 260ms ease;
+}
+
+.level-transition.is-active {
+  opacity: 1;
+  transform: scale(1);
+}
+
+.level-transition span {
+  font-size: clamp(2.2rem, 12vw, 4.2rem);
+  font-weight: 900;
+  letter-spacing: -0.06em;
+  text-shadow: 0 8px 28px rgba(0, 0, 0, 0.42);
 }
 
 .controls {

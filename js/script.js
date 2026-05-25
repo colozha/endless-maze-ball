@@ -22,6 +22,11 @@ const buttons = {
   continueButton: document.getElementById("continueButton")
 };
 
+const overlays = {
+  levelTransition: document.getElementById("levelTransition"),
+  levelTransitionText: document.getElementById("levelTransitionText")
+};
+
 // ===== Runtime State =====
 const gameState = {
   page: "home",
@@ -59,6 +64,9 @@ const gameState = {
   shieldTokenTimeoutId: null,
   shieldTimeoutId: null,
   shieldActiveUntil: 0,
+  particles: [],
+  playerTrail: [],
+  levelTransitionTimeoutId: null,
   spikeTimeoutId: null,
   spikeClearTimeoutId: null,
   lastFrameTime: 0,
@@ -177,6 +185,7 @@ function showPage(pageName) {
   gameState.page = pageName;
   Object.values(pages).forEach((page) => page.classList.remove("page-active"));
   pages[pageName].classList.add("page-active");
+  updateThemeClass();
   updateContinueButton();
   updateHUD();
 }
@@ -192,6 +201,7 @@ function startGame() {
   updateDifficultySelection();
   gameState.isGameRunning = true;
   generateMaze();
+  clearVisualEffects();
   saveProgress();
   showPage("game");
   resizeCanvas();
@@ -217,6 +227,7 @@ function continueGame() {
   updateDifficultySelection();
   gameState.isGameRunning = true;
   generateMaze();
+  clearVisualEffects();
   saveProgress();
   showPage("game");
   resizeCanvas();
@@ -243,7 +254,10 @@ function nextLevel() {
   saveHighScore();
   saveProgress();
   generateMaze();
+  clearVisualEffects();
   updateHUD();
+  updateThemeClass();
+  showLevelTransition();
   spawnLifeTokenForLevel();
   spawnShieldTokenForLevel();
   scheduleNextSpike();
@@ -306,6 +320,7 @@ function resetPlayer() {
   gameState.player.moveStartY = gameState.player.y;
   gameState.player.isMoving = false;
   gameState.player.queuedDirection = null;
+  clearPlayerTrail();
 }
 
 // ===== Rendering =====
@@ -316,7 +331,8 @@ function drawGame() {
   }
 
   ctx.clearRect(0, 0, canvas.width, canvas.height);
-  ctx.fillStyle = "#dbe7f5";
+  const theme = getCurrentTheme();
+  ctx.fillStyle = theme.path;
   ctx.fillRect(0, 0, canvas.width, canvas.height);
 
   drawCells();
@@ -325,11 +341,14 @@ function drawGame() {
   drawLifeToken();
   drawShieldToken();
   drawSpikes();
+  drawParticles();
+  drawPlayerTrail();
   drawPlayer();
   drawDebugOverlay();
 }
 
 function drawCells() {
+  const theme = getCurrentTheme();
   for (let y = 0; y < GRID_ROWS; y += 1) {
     for (let x = 0; x < GRID_COLS; x += 1) {
       if (gameState.maze[y]?.[x] !== WALL) {
@@ -338,8 +357,8 @@ function drawCells() {
 
       const rect = gridRect(x, y);
       const gradient = ctx.createLinearGradient(rect.x, rect.y, rect.x + rect.size, rect.y + rect.size);
-      gradient.addColorStop(0, "#355b85");
-      gradient.addColorStop(1, "#1f3755");
+      gradient.addColorStop(0, theme.wallStart);
+      gradient.addColorStop(1, theme.wallEnd);
       ctx.fillStyle = gradient;
       ctx.fillRect(rect.x, rect.y, rect.size + 0.5, rect.size + 0.5);
     }
@@ -489,20 +508,22 @@ function drawPlayer() {
   ctx.stroke();
 
   if (hasActiveShield()) {
-    ctx.strokeStyle = "rgba(112, 216, 255, 0.94)";
+    const pulse = getShieldPulse();
+    ctx.strokeStyle = `rgba(112, 216, 255, ${pulse.alpha})`;
     ctx.lineWidth = Math.max(3, radius * 0.24);
     ctx.beginPath();
-    ctx.arc(center.x, center.y, radius * 1.38, 0, Math.PI * 2);
+    ctx.arc(center.x, center.y, radius * 1.38 * pulse.scale, 0, Math.PI * 2);
     ctx.stroke();
   }
 }
 
 function drawSpikes() {
+  const theme = getCurrentTheme();
   gameState.activeSpikes.forEach((spike) => {
     const drawPosition = getSpikeDrawPosition(spike);
     const rect = gridRect(drawPosition.x, drawPosition.y);
     const pad = rect.size * 0.18;
-    ctx.fillStyle = "#ff4f6d";
+    ctx.fillStyle = theme.spike;
     ctx.beginPath();
 
     if (spike.side === "top") {
@@ -533,8 +554,14 @@ function drawLifeToken() {
     return;
   }
 
+  const visual = getTokenVisualState(gameState.lifeToken);
   const center = gridCenter(gameState.lifeToken.x, gameState.lifeToken.y);
   const size = gameState.cellSize * 0.26;
+  ctx.save();
+  ctx.globalAlpha = visual.alpha;
+  ctx.translate(center.x, center.y);
+  ctx.scale(visual.scale, visual.scale);
+  ctx.translate(-center.x, -center.y);
   ctx.fillStyle = "#ff3f63";
   ctx.beginPath();
   ctx.moveTo(center.x, center.y + size * 0.72);
@@ -559,6 +586,7 @@ function drawLifeToken() {
   ctx.strokeStyle = "rgba(255, 255, 255, 0.72)";
   ctx.lineWidth = Math.max(1.5, gameState.cellSize * 0.06);
   ctx.stroke();
+  ctx.restore();
 }
 
 function drawShieldToken() {
@@ -566,8 +594,14 @@ function drawShieldToken() {
     return;
   }
 
+  const visual = getTokenVisualState(gameState.shieldToken);
   const center = gridCenter(gameState.shieldToken.x, gameState.shieldToken.y);
   const size = gameState.cellSize * 0.36;
+  ctx.save();
+  ctx.globalAlpha = visual.alpha;
+  ctx.translate(center.x, center.y);
+  ctx.scale(visual.scale, visual.scale);
+  ctx.translate(-center.x, -center.y);
   ctx.fillStyle = "#70d8ff";
   ctx.beginPath();
   ctx.moveTo(center.x, center.y - size * 1.1);
@@ -581,6 +615,7 @@ function drawShieldToken() {
   ctx.strokeStyle = "rgba(255, 255, 255, 0.78)";
   ctx.lineWidth = Math.max(1.5, gameState.cellSize * 0.06);
   ctx.stroke();
+  ctx.restore();
 }
 
 // ===== Game Loop and Player Movement =====
@@ -594,6 +629,8 @@ function updateGame() {
   const deltaSeconds = Math.min((now - gameState.lastFrameTime) / 1000, 0.05);
   gameState.lastFrameTime = now;
   updateMovingSpikes(deltaSeconds);
+  updateParticles(deltaSeconds);
+  updatePlayerTrail();
   updatePlayerAnimation();
   drawGame();
   gameState.animationFrameId = requestAnimationFrame(updateGame);
@@ -680,6 +717,7 @@ function checkCollision() {
 
   if (hitLifeToken) {
     gameState.lives += 1;
+    spawnTokenParticles(gameState.lifeToken, "#ff4f6d");
     clearLifeToken();
     saveProgress();
     updateHUD();
@@ -688,6 +726,7 @@ function checkCollision() {
 
   if (hitShieldToken) {
     activateShield();
+    spawnTokenParticles(gameState.shieldToken, "#70d8ff");
     clearShieldToken();
     playShieldPickupSound();
     return;
@@ -880,19 +919,16 @@ function updateMovingSpikes(deltaSeconds) {
         return false;
       }
 
-      const targetX = gameState.player.x;
-      const targetY = gameState.player.y;
-      const deltaX = targetX - spike.currentX;
-      const deltaY = targetY - spike.currentY;
-      const distance = Math.hypot(deltaX, deltaY);
-
-      if (distance < 0.02) {
+      updateHomingSpikeTarget(spike, now);
+      if (spike.targetX === null || spike.targetY === null) {
         return true;
       }
 
-      const step = Math.min(homingSpeed * deltaSeconds, distance);
-      spike.currentX += (deltaX / distance) * step;
-      spike.currentY += (deltaY / distance) * step;
+      const reachedTarget = moveSpikeTowardTarget(spike, homingSpeed * deltaSeconds);
+      if (reachedTarget) {
+        spike.targetX = null;
+        spike.targetY = null;
+      }
       return true;
     }
 
@@ -900,17 +936,9 @@ function updateMovingSpikes(deltaSeconds) {
       return true;
     }
 
-    const step = movingSpeed * deltaSeconds;
-    const remainingX = spike.targetX - spike.currentX;
-    const remainingY = spike.targetY - spike.currentY;
-    const remainingDistance = Math.abs(remainingX) + Math.abs(remainingY);
-
-    if (remainingDistance <= step) {
+    if (moveSpikeTowardTarget(spike, movingSpeed * deltaSeconds)) {
       return false;
     }
-
-    spike.currentX += spike.moveDirection.x * step;
-    spike.currentY += spike.moveDirection.y * step;
     return true;
   });
 }
@@ -932,11 +960,126 @@ function prepareHomingSpikes() {
 
   const homingCount = Math.max(1, Math.ceil(gameState.activeSpikes.length * GAME_CONFIG.spikes.homing.ratio));
   shuffleArray([...gameState.activeSpikes]).slice(0, homingCount).forEach((spike) => {
+    const pathCell = getSpikePathCell(spike);
+    spike.currentX = pathCell.x;
+    spike.currentY = pathCell.y;
     spike.isMoving = false;
     spike.moveDirection = null;
     spike.isHoming = true;
+    spike.targetX = null;
+    spike.targetY = null;
+    spike.lastPathUpdateAt = 0;
     spike.homingEndsAt = performance.now() + GAME_CONFIG.spikes.homing.durationMs;
   });
+}
+
+function updateHomingSpikeTarget(spike, now) {
+  const currentCell = getSpikePathCell(spike);
+  const playerCell = {
+    x: Math.floor(gameState.player.targetX),
+    y: Math.floor(gameState.player.targetY)
+  };
+
+  if (currentCell.x === playerCell.x && currentCell.y === playerCell.y) {
+    spike.targetX = currentCell.x;
+    spike.targetY = currentCell.y;
+    return;
+  }
+
+  const isBetweenCells = Math.abs(spike.currentX - currentCell.x) + Math.abs(spike.currentY - currentCell.y) > 0.12;
+  const shouldThrottlePathfinding = now - spike.lastPathUpdateAt < 120;
+
+  if (isBetweenCells || shouldThrottlePathfinding) {
+    return;
+  }
+
+  const nextCell = findNextPathCell(currentCell, playerCell);
+  spike.lastPathUpdateAt = now;
+
+  if (!nextCell) {
+    const fallbackCell = findNearestPathCell(currentCell);
+    if (fallbackCell) {
+      spike.currentX = fallbackCell.x;
+      spike.currentY = fallbackCell.y;
+    }
+    spike.targetX = null;
+    spike.targetY = null;
+    return;
+  }
+
+  spike.targetX = nextCell.x;
+  spike.targetY = nextCell.y;
+}
+
+function findNextPathCell(startCell, targetCell) {
+  const queue = [startCell];
+  const visited = new Set([cellKey(startCell.x, startCell.y)]);
+  const previous = new Map();
+  const directions = [
+    { x: 0, y: -1 },
+    { x: 1, y: 0 },
+    { x: 0, y: 1 },
+    { x: -1, y: 0 }
+  ];
+
+  while (queue.length > 0) {
+    const current = queue.shift();
+    if (current.x === targetCell.x && current.y === targetCell.y) {
+      break;
+    }
+
+    directions.forEach((direction) => {
+      const next = {
+        x: current.x + direction.x,
+        y: current.y + direction.y
+      };
+      const key = cellKey(next.x, next.y);
+
+      if (visited.has(key) || gameState.maze[next.y]?.[next.x] !== PATH) {
+        return;
+      }
+
+      visited.add(key);
+      previous.set(key, current);
+      queue.push(next);
+    });
+  }
+
+  const targetKey = cellKey(targetCell.x, targetCell.y);
+  if (!visited.has(targetKey)) {
+    return null;
+  }
+
+  let step = targetCell;
+  while (previous.has(cellKey(step.x, step.y))) {
+    const parent = previous.get(cellKey(step.x, step.y));
+    if (parent.x === startCell.x && parent.y === startCell.y) {
+      return step;
+    }
+    step = parent;
+  }
+
+  return null;
+}
+
+function moveSpikeTowardTarget(spike, step) {
+  const remainingX = spike.targetX - spike.currentX;
+  const remainingY = spike.targetY - spike.currentY;
+  const remainingDistance = Math.abs(remainingX) + Math.abs(remainingY);
+
+  if (remainingDistance <= step) {
+    spike.currentX = spike.targetX;
+    spike.currentY = spike.targetY;
+    return true;
+  }
+
+  if (Math.abs(remainingX) > 0) {
+    spike.currentX += Math.sign(remainingX) * step;
+  } else if (Math.abs(remainingY) > 0) {
+    spike.currentY += Math.sign(remainingY) * step;
+  }
+
+  return false;
 }
 
 function countForwardPathCells(spike) {
@@ -976,6 +1119,69 @@ function getSpikeCollisionCell(spike) {
   };
 }
 
+function getSpikePathCell(spike) {
+  const position = getSpikeDrawPosition(spike);
+  const roundedCell = {
+    x: Math.round(position.x),
+    y: Math.round(position.y)
+  };
+
+  if (gameState.maze[roundedCell.y]?.[roundedCell.x] === PATH) {
+    return roundedCell;
+  }
+
+  const sourceCell = {
+    x: Math.round(spike.x),
+    y: Math.round(spike.y)
+  };
+  return findNearestPathCell(roundedCell) || findNearestPathCell(sourceCell) || sourceCell;
+}
+
+function findNearestPathCell(originCell) {
+  const queue = [originCell];
+  const visited = new Set([cellKey(originCell.x, originCell.y)]);
+  const directions = [
+    { x: 0, y: -1 },
+    { x: 1, y: 0 },
+    { x: 0, y: 1 },
+    { x: -1, y: 0 }
+  ];
+
+  while (queue.length > 0) {
+    const current = queue.shift();
+    if (gameState.maze[current.y]?.[current.x] === PATH) {
+      return current;
+    }
+
+    directions.forEach((direction) => {
+      const next = {
+        x: current.x + direction.x,
+        y: current.y + direction.y
+      };
+      const key = cellKey(next.x, next.y);
+
+      if (
+        visited.has(key) ||
+        next.x < 0 ||
+        next.y < 0 ||
+        next.x >= GRID_COLS ||
+        next.y >= GRID_ROWS
+      ) {
+        return;
+      }
+
+      visited.add(key);
+      queue.push(next);
+    });
+  }
+
+  return null;
+}
+
+function cellKey(x, y) {
+  return `${x},${y}`;
+}
+
 // Spawn bonus life token on every 7th level.
 function spawnLifeTokenForLevel() {
   if (!DEBUG_FLAGS.forceLifeToken && gameState.level % GAME_CONFIG.tokens.life.everyLevels !== 0) {
@@ -999,7 +1205,12 @@ function spawnLifeTokenForLevel() {
     return;
   }
 
-  gameState.lifeToken = candidates[Math.floor(Math.random() * candidates.length)];
+  const now = performance.now();
+  gameState.lifeToken = {
+    ...candidates[Math.floor(Math.random() * candidates.length)],
+    spawnedAt: now,
+    expiresAt: now + GAME_CONFIG.tokens.life.durationMs
+  };
   gameState.lifeTokenTimeoutId = window.setTimeout(clearLifeToken, GAME_CONFIG.tokens.life.durationMs);
 }
 
@@ -1042,7 +1253,12 @@ function spawnShieldTokenForLevel() {
     return;
   }
 
-  gameState.shieldToken = candidates[Math.floor(Math.random() * candidates.length)];
+  const now = performance.now();
+  gameState.shieldToken = {
+    ...candidates[Math.floor(Math.random() * candidates.length)],
+    spawnedAt: now,
+    expiresAt: now + GAME_CONFIG.tokens.shield.tokenDurationMs
+  };
   gameState.shieldTokenTimeoutId = window.setTimeout(clearShieldToken, GAME_CONFIG.tokens.shield.tokenDurationMs);
 }
 
@@ -1082,6 +1298,7 @@ function clearLevelTimers() {
   clearLifeToken();
   clearShieldToken();
   clearShieldEffect();
+  clearVisualEffects();
 }
 
 function clearActiveRunState() {
@@ -1094,6 +1311,18 @@ function clearActiveRunState() {
 
 function hasActiveShield() {
   return gameState.shieldActiveUntil > performance.now();
+}
+
+function clearVisualEffects() {
+  clearParticles();
+  clearPlayerTrail();
+
+  if (gameState.levelTransitionTimeoutId) {
+    window.clearTimeout(gameState.levelTransitionTimeoutId);
+    gameState.levelTransitionTimeoutId = null;
+  }
+
+  overlays.levelTransition?.classList.remove("is-active");
 }
 
 function scheduleNextSpike() {
@@ -1200,6 +1429,69 @@ function getSpikeSpawnDelay() {
   return gameState.difficulty === "hard"
     ? randomBetween(GAME_CONFIG.spikes.spawnDelayMs.hard.min, GAME_CONFIG.spikes.spawnDelayMs.hard.max)
     : randomBetween(GAME_CONFIG.spikes.spawnDelayMs.easy.min, GAME_CONFIG.spikes.spawnDelayMs.easy.max);
+}
+
+function getCurrentThemeKey() {
+  if (gameState.level <= GAME_CONFIG.visual.themes.blue.maxLevel) return "blue";
+  if (gameState.level <= GAME_CONFIG.visual.themes.orange.maxLevel) return "orange";
+  return "neon";
+}
+
+function getCurrentTheme() {
+  return GAME_CONFIG.visual.themes[getCurrentThemeKey()];
+}
+
+function updateThemeClass() {
+  const frame = document.querySelector(".game-frame");
+  if (!frame) {
+    return;
+  }
+
+  frame.classList.remove("theme-blue", "theme-orange", "theme-neon");
+  frame.classList.add(`theme-${getCurrentThemeKey()}`);
+}
+
+function getTokenVisualState(token) {
+  const now = performance.now();
+  const spawnProgress = Math.min((now - token.spawnedAt) / GAME_CONFIG.visual.tokenSpawnMs, 1);
+  const remaining = token.expiresAt - now;
+  const despawnProgress = remaining < GAME_CONFIG.visual.tokenDespawnMs
+    ? Math.max(remaining / GAME_CONFIG.visual.tokenDespawnMs, 0)
+    : 1;
+  const blink = remaining < GAME_CONFIG.visual.tokenDespawnMs
+    ? 0.72 + Math.sin(now / 70) * 0.28
+    : 1;
+
+  return {
+    scale: 0.4 + 0.6 * easeOutBack(spawnProgress),
+    alpha: Math.min(spawnProgress, despawnProgress) * blink
+  };
+}
+
+function getShieldPulse() {
+  const wave = (Math.sin(performance.now() / GAME_CONFIG.visual.shieldPulseMs * Math.PI * 2) + 1) / 2;
+  return {
+    scale: 1 + wave * 0.1,
+    alpha: (0.62 + wave * 0.28).toFixed(2)
+  };
+}
+
+function showLevelTransition() {
+  if (!overlays.levelTransition || !overlays.levelTransitionText) {
+    return;
+  }
+
+  overlays.levelTransitionText.textContent = `Level ${gameState.level}`;
+  overlays.levelTransition.classList.add("is-active");
+
+  if (gameState.levelTransitionTimeoutId) {
+    window.clearTimeout(gameState.levelTransitionTimeoutId);
+  }
+
+  gameState.levelTransitionTimeoutId = window.setTimeout(() => {
+    overlays.levelTransition.classList.remove("is-active");
+    gameState.levelTransitionTimeoutId = null;
+  }, GAME_CONFIG.visual.levelTransitionMs);
 }
 
 function clearSavedProgress() {
@@ -1313,6 +1605,10 @@ function randomBetween(min, max) {
   return Math.floor(Math.random() * (max - min + 1)) + min;
 }
 
+function randomFloat(min, max) {
+  return Math.random() * (max - min) + min;
+}
+
 function getSpikeCountForLevel() {
   const level = gameState.level;
   const range = GAME_CONFIG.spikes.countByLevel.find((item) => level <= item.maxLevel);
@@ -1330,6 +1626,99 @@ function shuffleArray(items) {
 
 function lerp(start, end, progress) {
   return start + (end - start) * progress;
+}
+
+function easeOutBack(progress) {
+  const c1 = 1.70158;
+  const c3 = c1 + 1;
+  return 1 + c3 * Math.pow(progress - 1, 3) + c1 * Math.pow(progress - 1, 2);
+}
+
+function spawnTokenParticles(cell, color) {
+  if (!cell) {
+    return;
+  }
+
+  const center = gridCenter(cell.x, cell.y);
+  for (let i = 0; i < GAME_CONFIG.visual.particleCount; i += 1) {
+    const angle = randomFloat(0, Math.PI * 2);
+    const speed = randomFloat(32, 92);
+    gameState.particles.push({
+      x: center.x,
+      y: center.y,
+      vx: Math.cos(angle) * speed,
+      vy: Math.sin(angle) * speed,
+      color,
+      radius: randomFloat(2, 4),
+      age: 0,
+      duration: GAME_CONFIG.visual.particleDurationMs / 1000
+    });
+  }
+}
+
+function updateParticles(deltaSeconds) {
+  gameState.particles = gameState.particles.filter((particle) => {
+    particle.age += deltaSeconds;
+    particle.x += particle.vx * deltaSeconds;
+    particle.y += particle.vy * deltaSeconds;
+    particle.vx *= 0.94;
+    particle.vy *= 0.94;
+    return particle.age < particle.duration;
+  });
+}
+
+function drawParticles() {
+  gameState.particles.forEach((particle) => {
+    const alpha = 1 - particle.age / particle.duration;
+    ctx.save();
+    ctx.globalAlpha = alpha;
+    ctx.fillStyle = particle.color;
+    ctx.beginPath();
+    ctx.arc(particle.x, particle.y, particle.radius * alpha, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.restore();
+  });
+}
+
+function clearParticles() {
+  gameState.particles = [];
+}
+
+function updatePlayerTrail() {
+  if (gameState.player.isMoving) {
+    gameState.playerTrail.push({
+      x: gameState.player.x,
+      y: gameState.player.y,
+      createdAt: performance.now()
+    });
+  }
+
+  const now = performance.now();
+  gameState.playerTrail = gameState.playerTrail
+    .filter((point) => now - point.createdAt <= GAME_CONFIG.visual.trailDurationMs)
+    .slice(-GAME_CONFIG.visual.trailMaxPoints);
+}
+
+function drawPlayerTrail() {
+  const now = performance.now();
+  gameState.playerTrail.forEach((point) => {
+    const age = now - point.createdAt;
+    const progress = Math.min(age / GAME_CONFIG.visual.trailDurationMs, 1);
+    const alpha = (1 - progress) * 0.26;
+    const center = gridToPixel(point.x, point.y);
+    const radius = gameState.player.radius * gameState.cellSize * (1 - progress * 0.35);
+    ctx.save();
+    ctx.globalAlpha = alpha;
+    ctx.fillStyle = "#ffcf4d";
+    ctx.beginPath();
+    ctx.arc(center.x, center.y, radius, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.restore();
+  });
+}
+
+function clearPlayerTrail() {
+  gameState.playerTrail = [];
 }
 
 function drawRoundedRect(x, y, width, height, radius, fill = false) {
