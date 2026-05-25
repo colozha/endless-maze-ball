@@ -54,7 +54,7 @@ const GAME_CONFIG = {
     homing: {
       levelMin: 21,
       ratio: 0.1,
-      durationMs: 10000,
+      durationMs: 7000,
       speedCellsPerSecond: 3.2
     },
     countByLevel: [

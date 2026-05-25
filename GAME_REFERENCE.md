@@ -132,10 +132,13 @@ Pada level `21+`, sebagian duri bergerak mengejar bola hanya di mode Hard.
 
 - Berlaku setiap fase duri muncul ke arena.
 - Game memilih sekitar `10%` dari semua duri aktif secara acak.
-- Duri terpilih bergerak mengejar posisi bola selama `10 detik`.
+- Duri terpilih bergerak mengejar posisi bola selama `7 detik`.
 - Duri homing mengikuti jalur kosong maze dengan pathfinding grid.
 - Duri homing tidak boleh menembus dinding.
-- Setelah 10 detik, duri homing menghilang.
+- Duri homing mengabaikan duri lain sebagai blocker agar tidak berhenti saat bertemu duri lain.
+- Jika duri homing tersangkut, game menghitung ulang jalur dari cell kosong terdekat.
+- Arah segitiga duri homing mengikuti arah gerakan aktual dengan rotasi halus saat berbelok.
+- Setelah 7 detik, duri homing menghilang.
 - Efek collision tetap sama: bola kehilangan 1 nyawa jika menyentuh duri homing.
 - Jika shield aktif, bola tetap kebal terhadap duri homing.
 

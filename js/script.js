@@ -522,30 +522,22 @@ function drawSpikes() {
   gameState.activeSpikes.forEach((spike) => {
     const drawPosition = getSpikeDrawPosition(spike);
     const rect = gridRect(drawPosition.x, drawPosition.y);
-    const pad = rect.size * 0.18;
+    const center = gridCenter(drawPosition.x, drawPosition.y);
+    const angle = getSpikeFacingAngle(spike);
+    const length = rect.size * 0.46;
+    const width = rect.size * 0.36;
+
+    ctx.save();
+    ctx.translate(center.x, center.y);
+    ctx.rotate(angle);
     ctx.fillStyle = theme.spike;
     ctx.beginPath();
-
-    if (spike.side === "top") {
-      ctx.moveTo(rect.x + pad, rect.y);
-      ctx.lineTo(rect.x + rect.size - pad, rect.y);
-      ctx.lineTo(rect.x + rect.size / 2, rect.y + rect.size * 0.46);
-    } else if (spike.side === "bottom") {
-      ctx.moveTo(rect.x + pad, rect.y + rect.size);
-      ctx.lineTo(rect.x + rect.size - pad, rect.y + rect.size);
-      ctx.lineTo(rect.x + rect.size / 2, rect.y + rect.size * 0.54);
-    } else if (spike.side === "left") {
-      ctx.moveTo(rect.x, rect.y + pad);
-      ctx.lineTo(rect.x, rect.y + rect.size - pad);
-      ctx.lineTo(rect.x + rect.size * 0.46, rect.y + rect.size / 2);
-    } else {
-      ctx.moveTo(rect.x + rect.size, rect.y + pad);
-      ctx.lineTo(rect.x + rect.size, rect.y + rect.size - pad);
-      ctx.lineTo(rect.x + rect.size * 0.54, rect.y + rect.size / 2);
-    }
-
+    ctx.moveTo(length, 0);
+    ctx.lineTo(-length * 0.52, -width);
+    ctx.lineTo(-length * 0.52, width);
     ctx.closePath();
     ctx.fill();
+    ctx.restore();
   });
 }
 
@@ -824,8 +816,13 @@ function spawnSpike() {
   }
 
   const shuffledCandidates = shuffleArray(candidates);
-  const usedCells = new Set();
-  gameState.activeSpikes = [];
+  const now = performance.now();
+  gameState.activeSpikes = gameState.activeSpikes.filter((spike) => spike.isHoming && now < spike.homingEndsAt);
+  const usedCells = new Set(gameState.activeSpikes.map((spike) => {
+    const cell = getSpikeCollisionCell(spike);
+    return `${cell.x},${cell.y}`;
+  }));
+  const spawnedSpikes = [];
 
   const spikeCount = getSpikeCountForLevel();
 
@@ -836,27 +833,32 @@ function spawnSpike() {
     }
 
     usedCells.add(key);
-    gameState.activeSpikes.push({
+    const spike = {
       ...candidate,
       currentX: candidate.x,
       currentY: candidate.y,
       isMoving: false,
       moveDirection: null,
       targetX: candidate.x,
-      targetY: candidate.y
-    });
+      targetY: candidate.y,
+      facingAngle: directionToAngle(getSpikeMoveDirection(candidate.side)),
+      targetFacingAngle: directionToAngle(getSpikeMoveDirection(candidate.side))
+    };
+    gameState.activeSpikes.push(spike);
+    spawnedSpikes.push(spike);
 
-    if (gameState.activeSpikes.length === spikeCount) {
+    if (spawnedSpikes.length === spikeCount) {
       break;
     }
   }
 
-  prepareMovingSpikes();
-  prepareHomingSpikes();
+  prepareMovingSpikes(spawnedSpikes);
+  prepareHomingSpikes(spawnedSpikes);
 
   const visibleMs = randomBetween(GAME_CONFIG.spikes.visibleMs.min, GAME_CONFIG.spikes.visibleMs.max);
   gameState.spikeClearTimeoutId = window.setTimeout(() => {
-    clearSpike(false);
+    gameState.activeSpikes = gameState.activeSpikes.filter((spike) => spike.isHoming && performance.now() < spike.homingEndsAt);
+    gameState.spikeClearTimeoutId = null;
     scheduleNextSpike();
   }, visibleMs);
 }
@@ -876,8 +878,9 @@ function clearSpike(cancelSchedule = true) {
 }
 
 // Mark eligible level 11-20 spikes to move forward.
-function prepareMovingSpikes() {
+function prepareMovingSpikes(spikes = gameState.activeSpikes) {
   if (
+    spikes.length === 0 ||
     !DEBUG_FLAGS.forceMovingSpikes &&
     (
       gameState.difficulty !== "hard" ||
@@ -888,7 +891,7 @@ function prepareMovingSpikes() {
     return;
   }
 
-  const eligibleSpikes = gameState.activeSpikes.filter((spike) => countForwardPathCells(spike) > 1);
+  const eligibleSpikes = spikes.filter((spike) => countForwardPathCells(spike) > 1);
   if (eligibleSpikes.length === 0) {
     return;
   }
@@ -901,6 +904,7 @@ function prepareMovingSpikes() {
     spike.moveDirection = direction;
     spike.targetX = spike.x + direction.x * distance;
     spike.targetY = spike.y + direction.y * distance;
+    spike.targetFacingAngle = directionToAngle(direction);
   });
 }
 
@@ -915,21 +919,7 @@ function updateMovingSpikes(deltaSeconds) {
   const now = performance.now();
   gameState.activeSpikes = gameState.activeSpikes.filter((spike) => {
     if (spike.isHoming) {
-      if (now >= spike.homingEndsAt) {
-        return false;
-      }
-
-      updateHomingSpikeTarget(spike, now);
-      if (spike.targetX === null || spike.targetY === null) {
-        return true;
-      }
-
-      const reachedTarget = moveSpikeTowardTarget(spike, homingSpeed * deltaSeconds);
-      if (reachedTarget) {
-        spike.targetX = null;
-        spike.targetY = null;
-      }
-      return true;
+      return updateHomingSpike(spike, now, homingSpeed * deltaSeconds);
     }
 
     if (!spike.isMoving || !spike.moveDirection) {
@@ -939,14 +929,15 @@ function updateMovingSpikes(deltaSeconds) {
     if (moveSpikeTowardTarget(spike, movingSpeed * deltaSeconds)) {
       return false;
     }
+    updateSpikeFacingAngle(spike);
     return true;
   });
 }
 
 // Mark random level 21+ spikes to chase the player.
-function prepareHomingSpikes() {
+function prepareHomingSpikes(spikes = gameState.activeSpikes) {
   if (
-    gameState.activeSpikes.length === 0 ||
+    spikes.length === 0 ||
     (
       !DEBUG_FLAGS.forceHomingSpikes &&
       (
@@ -958,8 +949,9 @@ function prepareHomingSpikes() {
     return;
   }
 
-  const homingCount = Math.max(1, Math.ceil(gameState.activeSpikes.length * GAME_CONFIG.spikes.homing.ratio));
-  shuffleArray([...gameState.activeSpikes]).slice(0, homingCount).forEach((spike) => {
+  const homingCandidates = spikes.filter((spike) => !spike.isHoming);
+  const homingCount = Math.max(1, Math.ceil(homingCandidates.length * GAME_CONFIG.spikes.homing.ratio));
+  shuffleArray([...homingCandidates]).slice(0, homingCount).forEach((spike) => {
     const pathCell = getSpikePathCell(spike);
     spike.currentX = pathCell.x;
     spike.currentY = pathCell.y;
@@ -968,12 +960,41 @@ function prepareHomingSpikes() {
     spike.isHoming = true;
     spike.targetX = null;
     spike.targetY = null;
+    spike.pathCells = [];
     spike.lastPathUpdateAt = 0;
+    spike.lastObservedX = pathCell.x;
+    spike.lastObservedY = pathCell.y;
+    spike.stuckStartedAt = null;
+    spike.targetFacingAngle = spike.facingAngle ?? directionToAngle(getSpikeMoveDirection(spike.side));
     spike.homingEndsAt = performance.now() + GAME_CONFIG.spikes.homing.durationMs;
   });
 }
 
-function updateHomingSpikeTarget(spike, now) {
+function updateHomingSpike(spike, now, step) {
+  if (now >= spike.homingEndsAt) {
+    return false;
+  }
+
+  const wasStuck = isHomingSpikeStuck(spike, now);
+  updateHomingSpikeTarget(spike, now, wasStuck);
+  if (!hasValidSpikeTarget(spike)) {
+    return true;
+  }
+
+  prepareHomingTurn(spike);
+  const reachedTarget = moveSpikeTowardTarget(spike, step, false);
+  if (reachedTarget) {
+    consumeReachedHomingCell(spike);
+    spike.targetX = null;
+    spike.targetY = null;
+    updateHomingSpikeTarget(spike, now, true);
+  }
+
+  updateSpikeFacingAngle(spike);
+  return true;
+}
+
+function updateHomingSpikeTarget(spike, now, forceRefresh = false) {
   const currentCell = getSpikePathCell(spike);
   const playerCell = {
     x: Math.floor(gameState.player.targetX),
@@ -989,14 +1010,21 @@ function updateHomingSpikeTarget(spike, now) {
   const isBetweenCells = Math.abs(spike.currentX - currentCell.x) + Math.abs(spike.currentY - currentCell.y) > 0.12;
   const shouldThrottlePathfinding = now - spike.lastPathUpdateAt < 120;
 
-  if (isBetweenCells || shouldThrottlePathfinding) {
+  if (!forceRefresh && isBetweenCells) {
     return;
   }
 
-  const nextCell = findNextPathCell(currentCell, playerCell);
+  if (!forceRefresh && shouldThrottlePathfinding) {
+    if (!hasValidSpikeTarget(spike)) {
+      setNextHomingTarget(spike);
+    }
+    return;
+  }
+
+  const pathCells = findPathCells(currentCell, playerCell);
   spike.lastPathUpdateAt = now;
 
-  if (!nextCell) {
+  if (pathCells.length === 0) {
     const fallbackCell = findNearestPathCell(currentCell);
     if (fallbackCell) {
       spike.currentX = fallbackCell.x;
@@ -1007,14 +1035,25 @@ function updateHomingSpikeTarget(spike, now) {
     return;
   }
 
-  spike.targetX = nextCell.x;
-  spike.targetY = nextCell.y;
+  spike.pathCells = pathCells;
+  setNextHomingTarget(spike);
 }
 
 function findNextPathCell(startCell, targetCell) {
+  const pathCells = findPathCells(startCell, targetCell);
+  return pathCells[0] ?? null;
+}
+
+function findPathCells(startCell, targetCell) {
+  if (gameState.maze[startCell.y]?.[startCell.x] !== PATH) {
+    return [];
+  }
+
   const queue = [startCell];
   const visited = new Set([cellKey(startCell.x, startCell.y)]);
   const previous = new Map();
+  let bestCell = startCell;
+  let bestDistance = manhattanDistance(startCell, targetCell);
   const directions = [
     { x: 0, y: -1 },
     { x: 1, y: 0 },
@@ -1024,7 +1063,14 @@ function findNextPathCell(startCell, targetCell) {
 
   while (queue.length > 0) {
     const current = queue.shift();
+    const distance = manhattanDistance(current, targetCell);
+    if (distance < bestDistance) {
+      bestDistance = distance;
+      bestCell = current;
+    }
+
     if (current.x === targetCell.x && current.y === targetCell.y) {
+      bestCell = current;
       break;
     }
 
@@ -1045,24 +1091,20 @@ function findNextPathCell(startCell, targetCell) {
     });
   }
 
-  const targetKey = cellKey(targetCell.x, targetCell.y);
-  if (!visited.has(targetKey)) {
-    return null;
-  }
-
-  let step = targetCell;
+  let step = visited.has(cellKey(targetCell.x, targetCell.y)) ? targetCell : bestCell;
+  const pathCells = [];
   while (previous.has(cellKey(step.x, step.y))) {
+    pathCells.unshift(step);
     const parent = previous.get(cellKey(step.x, step.y));
-    if (parent.x === startCell.x && parent.y === startCell.y) {
-      return step;
-    }
     step = parent;
   }
 
-  return null;
+  return pathCells;
 }
 
-function moveSpikeTowardTarget(spike, step) {
+function moveSpikeTowardTarget(spike, step, updateFacingFromMovement = true) {
+  const startX = spike.currentX;
+  const startY = spike.currentY;
   const remainingX = spike.targetX - spike.currentX;
   const remainingY = spike.targetY - spike.currentY;
   const remainingDistance = Math.abs(remainingX) + Math.abs(remainingY);
@@ -1070,6 +1112,9 @@ function moveSpikeTowardTarget(spike, step) {
   if (remainingDistance <= step) {
     spike.currentX = spike.targetX;
     spike.currentY = spike.targetY;
+    if (updateFacingFromMovement) {
+      updateSpikeFacingFromDelta(spike, spike.currentX - startX, spike.currentY - startY);
+    }
     return true;
   }
 
@@ -1079,7 +1124,93 @@ function moveSpikeTowardTarget(spike, step) {
     spike.currentY += Math.sign(remainingY) * step;
   }
 
+  if (updateFacingFromMovement) {
+    updateSpikeFacingFromDelta(spike, spike.currentX - startX, spike.currentY - startY);
+  }
   return false;
+}
+
+function setNextHomingTarget(spike) {
+  const currentCell = getSpikePathCell(spike);
+  while (
+    spike.pathCells?.length > 0 &&
+    spike.pathCells[0].x === currentCell.x &&
+    spike.pathCells[0].y === currentCell.y
+  ) {
+    spike.pathCells.shift();
+  }
+
+  const nextCell = spike.pathCells?.[0];
+  if (!nextCell || gameState.maze[nextCell.y]?.[nextCell.x] !== PATH) {
+    spike.targetX = null;
+    spike.targetY = null;
+    spike.pathCells = [];
+    return;
+  }
+
+  spike.targetX = nextCell.x;
+  spike.targetY = nextCell.y;
+  updateSpikeFacingTowardCell(spike, currentCell, nextCell);
+}
+
+function prepareHomingTurn(spike) {
+  if (!spike.isHoming || !hasValidSpikeTarget(spike) || !spike.pathCells || spike.pathCells.length < 2) {
+    return;
+  }
+
+  const distanceToTarget = Math.abs(spike.targetX - spike.currentX) + Math.abs(spike.targetY - spike.currentY);
+  if (distanceToTarget > 0.42) {
+    return;
+  }
+
+  const currentTarget = spike.pathCells[0];
+  const nextTarget = spike.pathCells[1];
+  updateSpikeFacingTowardCell(spike, currentTarget, nextTarget);
+}
+
+function consumeReachedHomingCell(spike) {
+  if (
+    spike.pathCells?.length > 0 &&
+    spike.pathCells[0].x === spike.targetX &&
+    spike.pathCells[0].y === spike.targetY
+  ) {
+    spike.pathCells.shift();
+  }
+}
+
+function hasValidSpikeTarget(spike) {
+  return (
+    spike.targetX !== null &&
+    spike.targetY !== null &&
+    gameState.maze[spike.targetY]?.[spike.targetX] === PATH
+  );
+}
+
+function isHomingSpikeStuck(spike, now) {
+  const movedDistance = Math.abs(spike.currentX - spike.lastObservedX) + Math.abs(spike.currentY - spike.lastObservedY);
+  if (movedDistance > 0.025 || !hasValidSpikeTarget(spike)) {
+    spike.lastObservedX = spike.currentX;
+    spike.lastObservedY = spike.currentY;
+    spike.stuckStartedAt = null;
+    return false;
+  }
+
+  if (!spike.stuckStartedAt) {
+    spike.stuckStartedAt = now;
+  }
+
+  const isStuck = now - spike.stuckStartedAt > 320;
+  if (isStuck) {
+    const pathCell = getSpikePathCell(spike);
+    spike.currentX = pathCell.x;
+    spike.currentY = pathCell.y;
+    spike.pathCells = [];
+    spike.targetX = null;
+    spike.targetY = null;
+    spike.stuckStartedAt = null;
+  }
+
+  return isStuck;
 }
 
 function countForwardPathCells(spike) {
@@ -1102,6 +1233,87 @@ function getSpikeMoveDirection(side) {
   if (side === "bottom") return { x: 0, y: -1 };
   if (side === "left") return { x: 1, y: 0 };
   return { x: -1, y: 0 };
+}
+
+function getSpikeFacingAngle(spike) {
+  if (spike.facingAngle === undefined) {
+    spike.facingAngle = directionToAngle(getSpikeMoveDirection(spike.side));
+  }
+
+  if (spike.targetFacingAngle === undefined) {
+    spike.targetFacingAngle = spike.facingAngle;
+  }
+
+  return spike.facingAngle;
+}
+
+function updateSpikeFacingFromDelta(spike, deltaX, deltaY) {
+  if (Math.abs(deltaX) < 0.001 && Math.abs(deltaY) < 0.001) {
+    return;
+  }
+
+  setSpikeTargetFacingAngle(
+    spike,
+    Math.abs(deltaX) > Math.abs(deltaY)
+      ? directionToAngle({ x: Math.sign(deltaX), y: 0 })
+      : directionToAngle({ x: 0, y: Math.sign(deltaY) })
+  );
+}
+
+function updateSpikeFacingTowardCell(spike, fromCell, toCell) {
+  const deltaX = toCell.x - fromCell.x;
+  const deltaY = toCell.y - fromCell.y;
+  if (deltaX === 0 && deltaY === 0) {
+    return;
+  }
+
+  setSpikeTargetFacingAngle(
+    spike,
+    Math.abs(deltaX) > Math.abs(deltaY)
+      ? directionToAngle({ x: Math.sign(deltaX), y: 0 })
+      : directionToAngle({ x: 0, y: Math.sign(deltaY) })
+  );
+}
+
+function setSpikeTargetFacingAngle(spike, angle) {
+  if (spike.targetFacingAngle !== undefined && Math.abs(normalizeAngle(angle - spike.targetFacingAngle)) < 0.001) {
+    return;
+  }
+
+  spike.targetFacingAngle = angle;
+}
+
+function updateSpikeFacingAngle(spike) {
+  if (spike.targetFacingAngle === undefined) {
+    return;
+  }
+
+  if (spike.facingAngle === undefined) {
+    spike.facingAngle = spike.targetFacingAngle;
+    return;
+  }
+
+  const delta = normalizeAngle(spike.targetFacingAngle - spike.facingAngle);
+  if (Math.abs(delta) < 0.015) {
+    spike.facingAngle += delta;
+    return;
+  }
+
+  spike.facingAngle += delta * 0.12;
+}
+
+function directionToAngle(direction) {
+  if (direction.x > 0) return 0;
+  if (direction.x < 0) return Math.PI;
+  if (direction.y > 0) return Math.PI / 2;
+  return -Math.PI / 2;
+}
+
+function normalizeAngle(angle) {
+  let normalized = angle;
+  while (normalized > Math.PI) normalized -= Math.PI * 2;
+  while (normalized < -Math.PI) normalized += Math.PI * 2;
+  return normalized;
 }
 
 function getSpikeDrawPosition(spike) {
@@ -1135,6 +1347,10 @@ function getSpikePathCell(spike) {
     y: Math.round(spike.y)
   };
   return findNearestPathCell(roundedCell) || findNearestPathCell(sourceCell) || sourceCell;
+}
+
+function manhattanDistance(cellA, cellB) {
+  return Math.abs(cellA.x - cellB.x) + Math.abs(cellA.y - cellB.y);
 }
 
 function findNearestPathCell(originCell) {

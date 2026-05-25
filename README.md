@@ -53,7 +53,8 @@ Tidak ada framework atau library eksternal.
 - Semua fitur duri aktif.
 - Duri muncul setiap 3-7 detik.
 - Level 11-20 memiliki sebagian duri bergerak maju.
-- Level 21+ memiliki sebagian duri homing yang mengejar bola.
+- Level 21+ memiliki sebagian duri homing yang mengejar bola melalui jalur maze selama 10 detik.
+- Duri homing menghitung ulang jalur jika tersangkut dan arah segitiganya mengikuti arah gerakan.
 
 ## Item dan Hazard
 
