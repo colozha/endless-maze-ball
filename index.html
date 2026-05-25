@@ -37,32 +37,40 @@
     <section id="gamePage" class="page">
       <div class="game-frame">
         <div class="hud">
-          <div class="hud-item hud-level" aria-label="Level">
-            <span class="hud-icon icon-level" aria-hidden="true"></span>
-            <strong id="levelText">1</strong>
+          <div class="hud-group hud-stats" aria-label="Game stats">
+            <div class="hud-item hud-level" aria-label="Level">
+              <span class="hud-icon icon-level" aria-hidden="true"></span>
+              <strong id="levelText">1</strong>
+            </div>
+            <div class="hud-item hud-lives" aria-label="Lives">
+              <span class="hud-icon icon-lives" aria-hidden="true"></span>
+              <strong id="livesText">5</strong>
+            </div>
+            <div class="hud-item hud-high" aria-label="High score">
+              <span class="hud-icon icon-high" aria-hidden="true"></span>
+              <strong id="gameHighScore">0</strong>
+            </div>
           </div>
-          <div class="hud-item hud-lives" aria-label="Lives">
-            <span class="hud-icon icon-lives" aria-hidden="true"></span>
-            <strong id="livesText">5</strong>
+
+          <div class="hud-group hud-status" aria-label="Game status">
+            <div class="hud-item difficulty-flag" aria-label="Difficulty mode">
+              <span class="hud-icon icon-mode" aria-hidden="true"></span>
+              <strong id="difficultyText">Easy</strong>
+            </div>
+            <div id="bossFlag" class="hud-item boss-flag" aria-label="Boss level" hidden>
+              <span class="hud-icon icon-boss" aria-hidden="true"></span>
+              <strong>Boss</strong>
+            </div>
           </div>
-          <div class="hud-item hud-high" aria-label="High score">
-            <span class="hud-icon icon-high" aria-hidden="true"></span>
-            <strong id="gameHighScore">0</strong>
+
+          <div class="hud-group hud-actions" aria-label="Game actions">
+            <button id="pauseButton" class="pause-button" type="button" aria-label="Pause game">
+              <span aria-hidden="true"></span>
+            </button>
+            <button id="controlsToggle" class="control-toggle" type="button" aria-label="Hide directional controls" aria-pressed="true">
+              <strong id="controlsToggleIcon" class="joystick-toggle-icon" aria-hidden="true"></strong>
+            </button>
           </div>
-          <div class="hud-item difficulty-flag" aria-label="Difficulty mode">
-            <span class="hud-icon icon-mode" aria-hidden="true"></span>
-            <strong id="difficultyText">Easy</strong>
-          </div>
-          <div id="bossFlag" class="hud-item boss-flag" aria-label="Boss level" hidden>
-            <span class="hud-icon icon-boss" aria-hidden="true"></span>
-            <strong>Boss</strong>
-          </div>
-          <button id="pauseButton" class="pause-button" type="button" aria-label="Pause game">
-            <span aria-hidden="true"></span>
-          </button>
-          <button id="controlsToggle" class="control-toggle" type="button" aria-label="Hide directional controls" aria-pressed="true">
-            <strong id="controlsToggleIcon" class="joystick-toggle-icon" aria-hidden="true"></strong>
-          </button>
         </div>
 
         <div id="canvasWrap" class="canvas-wrap maze-panel">

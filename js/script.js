@@ -13,6 +13,7 @@ const hud = {
   levelText: document.getElementById("levelText"),
   livesText: document.getElementById("livesText"),
   gameHighScore: document.getElementById("gameHighScore"),
+  difficultyFlag: document.querySelector(".difficulty-flag"),
   difficultyText: document.getElementById("difficultyText"),
   finalLevelText: document.getElementById("finalLevelText"),
   endHighScore: document.getElementById("endHighScore"),
@@ -1788,6 +1789,8 @@ function updateHUD() {
   hud.livesText.textContent = gameState.lives;
   hud.gameHighScore.textContent = activeHighScore;
   hud.difficultyText.textContent = formatDifficulty(gameState.difficulty);
+  hud.difficultyFlag.classList.toggle("is-easy", gameState.difficulty === "easy");
+  hud.difficultyFlag.classList.toggle("is-hard", gameState.difficulty === "hard");
   hud.bossFlag.hidden = !isBossLevel();
   hud.finalLevelText.textContent = gameState.level;
   hud.endHighScore.textContent = activeHighScore;
