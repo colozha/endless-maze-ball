@@ -15,6 +15,7 @@ const hud = {
   gameHighScore: document.getElementById("gameHighScore"),
   difficultyFlag: document.querySelector(".difficulty-flag"),
   difficultyText: document.getElementById("difficultyText"),
+  bossObjectiveText: document.getElementById("bossObjectiveText"),
   finalLevelText: document.getElementById("finalLevelText"),
   endHighScore: document.getElementById("endHighScore"),
   controlsToggleIcon: document.getElementById("controlsToggleIcon"),
@@ -83,12 +84,25 @@ const gameState = {
   levelTransitionTimeoutId: null,
   spikeTimeoutId: null,
   spikeClearTimeoutId: null,
+  bossPulseTimeoutId: null,
+  bossPulseStageTimeoutId: null,
+  bossGateUnlockTimeoutId: null,
   lastFrameTime: 0,
   isGameRunning: false,
   isPaused: false,
   pausedAt: 0,
   pausedTimers: {},
-  bossWaveIndex: 0,
+  boss: {
+    isActive: false,
+    phase: 0,
+    cores: [],
+    activatedCoreCount: 0,
+    gateUnlocked: false,
+    gateUnlockPending: false,
+    pulseWalls: [],
+    rewardGranted: false,
+    finishLockHintUntil: 0
+  },
   animationFrameId: null,
   cellSize: 1,
   offsetX: 0,
@@ -233,7 +247,7 @@ function startGame() {
   gameState.level = DEBUG_FLAGS.enabled ? DEBUG_FLAGS.startLevel : 1;
   gameState.lives = gameState.maxLives;
   gameState.difficulty = DEBUG_FLAGS.forcedDifficulty || loadSelectedDifficulty();
-  gameState.bossWaveIndex = 0;
+  resetBossState();
   updateDifficultySelection();
   gameState.isGameRunning = true;
   generateMaze();
@@ -259,6 +273,10 @@ function prepareLevelRuntime() {
   spawnShieldTokenForLevel();
   activateAutoShieldForLevel();
   scheduleNextSpike();
+  scheduleBossPulseWall();
+  if (gameState.boss.isActive) {
+    showBossBanner(`Boss Phase ${gameState.boss.phase}`);
+  }
 }
 
 // Resume saved progress with a newly generated maze.
@@ -275,7 +293,7 @@ function continueGame() {
   gameState.level = progress.level;
   gameState.lives = progress.lives;
   gameState.difficulty = progress.difficulty || "easy";
-  gameState.bossWaveIndex = 0;
+  resetBossState();
   saveSelectedDifficulty();
   updateDifficultySelection();
   gameState.isGameRunning = true;
@@ -304,7 +322,7 @@ function endGame() {
 function nextLevel() {
   clearLevelTimers();
   gameState.level += 1;
-  gameState.bossWaveIndex = 0;
+  resetBossState();
   saveHighScore();
   saveProgress();
   generateMaze();
@@ -360,6 +378,10 @@ function generateMaze() {
   gameState.finish = { x: GRID_COLS - 2, y: GRID_ROWS - 2 };
   gameState.maze[gameState.start.y][gameState.start.x] = PATH;
   gameState.maze[gameState.finish.y][gameState.finish.x] = PATH;
+  resetBossState();
+  if (isBossLevel()) {
+    setupBossLevel();
+  }
   resetPlayer();
 }
 
@@ -373,6 +395,120 @@ function resetPlayer() {
   gameState.player.isMoving = false;
   gameState.player.queuedDirection = null;
   clearPlayerTrail();
+}
+
+function resetBossState() {
+  clearTrackedTimeout("bossGateUnlockTimeoutId");
+  clearBossPulseWalls();
+  gameState.boss = {
+    isActive: false,
+    phase: 0,
+    cores: [],
+    activatedCoreCount: 0,
+    gateUnlocked: false,
+    gateUnlockPending: false,
+    pulseWalls: [],
+    rewardGranted: false,
+    finishLockHintUntil: 0
+  };
+}
+
+function setupBossLevel() {
+  gameState.boss.isActive = true;
+  gameState.boss.phase = 0;
+  buildBossArena();
+  spawnBossCores();
+  updateBossPhase(false);
+}
+
+function buildBossArena() {
+  const centerX = Math.floor(GRID_COLS / 2);
+  const centerY = Math.floor(GRID_ROWS / 2);
+  const openOffsets = [
+    [0, 0],
+    [0, -1],
+    [0, 1],
+    [-1, 0],
+    [1, 0],
+    [-1, -2],
+    [1, -2],
+    [-1, 2],
+    [1, 2],
+    [0, 3],
+    [0, -3],
+    [-2, 0],
+    [2, 0]
+  ];
+
+  openOffsets
+    .slice(0, GAME_CONFIG.bossLevel.arena.extraOpenCells)
+    .forEach(([offsetX, offsetY]) => {
+      const x = centerX + offsetX;
+      const y = centerY + offsetY;
+      if (x > 0 && x < GRID_COLS - 1 && y > 0 && y < GRID_ROWS - 1) {
+        gameState.maze[y][x] = PATH;
+      }
+    });
+}
+
+function spawnBossCores() {
+  const coreIds = ["A", "B", "C"];
+  const candidates = getTokenSpawnCandidates().filter((candidate) => (
+    getCellDistance(candidate, gameState.start) >= GAME_CONFIG.bossLevel.arena.spreadMinDistance &&
+    getCellDistance(candidate, gameState.finish) >= GAME_CONFIG.bossLevel.arena.spreadMinDistance
+  ));
+  const zones = [
+    (candidate) => candidate.y <= Math.floor(GRID_ROWS / 3),
+    (candidate) => candidate.y > Math.floor(GRID_ROWS / 3) && candidate.y < Math.floor((GRID_ROWS * 2) / 3),
+    (candidate) => candidate.y >= Math.floor((GRID_ROWS * 2) / 3)
+  ];
+  const selected = [];
+
+  zones.forEach((matcher) => {
+    const zoneCandidates = shuffleArray(candidates.filter((candidate) => (
+      matcher(candidate) &&
+      selected.every((picked) => getCellDistance(candidate, picked) >= GAME_CONFIG.bossLevel.arena.spreadMinDistance)
+    )));
+    if (zoneCandidates[0]) {
+      selected.push(zoneCandidates[0]);
+    }
+  });
+
+  if (selected.length < GAME_CONFIG.bossLevel.coreCount) {
+    shuffleArray(candidates).forEach((candidate) => {
+      if (selected.length >= GAME_CONFIG.bossLevel.coreCount) {
+        return;
+      }
+
+      if (selected.some((picked) => picked.x === candidate.x && picked.y === candidate.y)) {
+        return;
+      }
+
+      if (selected.every((picked) => getCellDistance(candidate, picked) >= 3)) {
+        selected.push(candidate);
+      }
+    });
+  }
+
+  if (selected.length < GAME_CONFIG.bossLevel.coreCount) {
+    shuffleArray(candidates).forEach((candidate) => {
+      if (selected.length >= GAME_CONFIG.bossLevel.coreCount) {
+        return;
+      }
+
+      if (!selected.some((picked) => picked.x === candidate.x && picked.y === candidate.y)) {
+        selected.push(candidate);
+      }
+    });
+  }
+
+  gameState.boss.cores = selected.slice(0, GAME_CONFIG.bossLevel.coreCount).map((candidate, index) => ({
+    id: coreIds[index] || String(index + 1),
+    x: candidate.x,
+    y: candidate.y,
+    isActivated: false,
+    activatedAt: 0
+  }));
 }
 
 // ===== Rendering =====
@@ -390,9 +526,12 @@ function drawGame() {
   drawCells();
   drawStartIcon(gameState.start);
   drawFinishIcon(gameState.finish);
+  drawBossGate();
+  drawBossCores();
   drawLifeToken();
   drawShieldTokens();
   drawSpikes();
+  drawPulseWalls();
   drawParticles();
   drawPlayerTrail();
   drawPlayer();
@@ -548,6 +687,86 @@ function drawFinishIcon(cell) {
   ctx.lineTo(center.x + radius * 0.16, center.y + radius * 0.06);
   ctx.closePath();
   ctx.fill();
+
+  if (!gameState.boss.isActive || gameState.boss.gateUnlocked) {
+    return;
+  }
+
+  ctx.fillStyle = "rgba(4, 23, 42, 0.76)";
+  ctx.beginPath();
+  ctx.arc(center.x, center.y + radius * 0.04, radius * 0.42, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.fillRect(center.x - radius * 0.2, center.y - radius * 0.44, radius * 0.4, radius * 0.54);
+}
+
+function drawBossGate() {
+  if (!gameState.boss.isActive) {
+    return;
+  }
+
+  const center = gridCenter(gameState.finish.x, gameState.finish.y);
+  const radius = gameState.cellSize * 0.42;
+  ctx.save();
+  ctx.strokeStyle = gameState.boss.gateUnlocked ? "rgba(112, 216, 255, 0.9)" : "rgba(255, 86, 118, 0.88)";
+  ctx.lineWidth = Math.max(2, gameState.cellSize * 0.08);
+  ctx.beginPath();
+  ctx.arc(center.x, center.y, radius, 0, Math.PI * 2);
+  ctx.stroke();
+  ctx.restore();
+}
+
+function drawBossCores() {
+  if (!gameState.boss.isActive || gameState.boss.cores.length === 0) {
+    return;
+  }
+
+  gameState.boss.cores.forEach((core) => {
+    const center = gridCenter(core.x, core.y);
+    const radius = gameState.cellSize * 0.24;
+    const pulse = core.isActivated ? 0.9 + Math.sin((performance.now() - core.activatedAt) / 140) * 0.08 : 1;
+    ctx.save();
+    ctx.translate(center.x, center.y);
+    ctx.scale(pulse, pulse);
+    ctx.translate(-center.x, -center.y);
+    ctx.fillStyle = core.isActivated ? "#ffe36d" : "#ff6b3d";
+    ctx.beginPath();
+    ctx.moveTo(center.x, center.y - radius * 1.35);
+    ctx.lineTo(center.x + radius * 1.05, center.y);
+    ctx.lineTo(center.x, center.y + radius * 1.35);
+    ctx.lineTo(center.x - radius * 1.05, center.y);
+    ctx.closePath();
+    ctx.fill();
+    ctx.strokeStyle = "rgba(255, 255, 255, 0.82)";
+    ctx.lineWidth = Math.max(1.5, gameState.cellSize * 0.05);
+    ctx.stroke();
+    ctx.restore();
+  });
+}
+
+function drawPulseWalls() {
+  if (!gameState.boss.isActive || gameState.boss.pulseWalls.length === 0) {
+    return;
+  }
+
+  gameState.boss.pulseWalls.forEach((pulseWall) => {
+    const fillStyle = pulseWall.state === "warning"
+      ? "rgba(255, 214, 109, 0.34)"
+      : "rgba(255, 79, 109, 0.48)";
+    const strokeStyle = pulseWall.state === "warning"
+      ? "rgba(255, 214, 109, 0.82)"
+      : "rgba(255, 79, 109, 0.92)";
+
+    ctx.save();
+    ctx.fillStyle = fillStyle;
+    ctx.strokeStyle = strokeStyle;
+    ctx.lineWidth = Math.max(1, gameState.cellSize * 0.04);
+    pulseWall.cells.forEach((cell) => {
+      const rect = gridRect(cell.x, cell.y);
+      ctx.fillRect(rect.x + 1, rect.y + 1, rect.size - 2, rect.size - 2);
+      ctx.strokeRect(rect.x + 1.5, rect.y + 1.5, rect.size - 3, rect.size - 3);
+    });
+    ctx.restore();
+  });
 }
 
 function drawPlayer() {
@@ -780,7 +999,21 @@ function checkCollision() {
     y: Math.floor(gameState.player.y)
   };
 
+  tryActivateBossCore(playerCell);
+
   if (playerCell.x === gameState.finish.x && playerCell.y === gameState.finish.y) {
+    if (gameState.boss.isActive && !gameState.boss.gateUnlocked) {
+      maybeShowBossLockedHint();
+      return;
+    }
+
+    if (gameState.boss.isActive && !gameState.boss.rewardGranted) {
+      gameState.lives += GAME_CONFIG.bossLevel.rewardLives;
+      gameState.boss.rewardGranted = true;
+      updateHUD();
+      spawnTokenParticles(gameState.finish, "#ffe36d");
+    }
+
     clearShieldEffect();
     playSuccessSound();
     nextLevel();
@@ -794,6 +1027,7 @@ function checkCollision() {
   const hitLifeToken = gameState.lifeToken &&
     gameState.lifeToken.x === playerCell.x &&
     gameState.lifeToken.y === playerCell.y;
+  const hitPulseWall = getActivePulseWallAtCell(playerCell.x, playerCell.y);
   const hitShieldTokenIndex = gameState.shieldTokens.findIndex((shieldToken) => (
     shieldToken.x === playerCell.x &&
     shieldToken.y === playerCell.y
@@ -817,25 +1051,31 @@ function checkCollision() {
     return;
   }
 
-  if (!hitSpike) {
+  if (!hitSpike && !hitPulseWall) {
     return;
   }
 
   if (hasActiveShield()) {
-    clearSpike();
-    scheduleNextSpike();
+    if (hitSpike) {
+      clearSpike();
+      scheduleNextSpike();
+    }
     return;
   }
 
   if (DEBUG_FLAGS.invincible) {
-    clearSpike();
-    scheduleNextSpike();
+    if (hitSpike) {
+      clearSpike();
+      scheduleNextSpike();
+    }
     return;
   }
 
   gameState.lives -= 1;
   playFailSound();
-  clearSpike();
+  if (hitSpike) {
+    clearSpike();
+  }
 
   if (gameState.lives <= 0) {
     endGame();
@@ -845,7 +1085,9 @@ function checkCollision() {
   resetPlayer();
   saveProgress();
   updateHUD();
-  scheduleNextSpike();
+  if (hitSpike) {
+    scheduleNextSpike();
+  }
 }
 
 // Interpolate player position between grid cells.
@@ -880,7 +1122,220 @@ function startQueuedMove() {
   movePlayer(direction);
 }
 
+function tryActivateBossCore(playerCell) {
+  if (!gameState.boss.isActive) {
+    return;
+  }
+
+  const core = gameState.boss.cores.find((item) => (
+    !item.isActivated &&
+    item.x === playerCell.x &&
+    item.y === playerCell.y
+  ));
+
+  if (!core) {
+    return;
+  }
+
+  core.isActivated = true;
+  core.activatedAt = performance.now();
+  gameState.boss.activatedCoreCount += 1;
+  spawnTokenParticles(core, "#ffe36d");
+
+  if (gameState.boss.activatedCoreCount >= GAME_CONFIG.bossLevel.coreCount) {
+    unlockBossGate();
+  } else {
+    updateBossPhase(true);
+  }
+
+  updateHUD();
+}
+
+function unlockBossGate() {
+  if (gameState.boss.gateUnlocked || gameState.boss.gateUnlockPending) {
+    return;
+  }
+
+  gameState.boss.gateUnlockPending = true;
+  updateHUD();
+
+  const unlockGate = () => {
+    gameState.boss.gateUnlockPending = false;
+    gameState.boss.gateUnlocked = true;
+    updateBossPhase(false);
+    updateHUD();
+    showBossBanner("Escape");
+  };
+
+  if (GAME_CONFIG.bossLevel.exitUnlockDelayMs <= 0) {
+    unlockGate();
+    return;
+  }
+
+  showBossBanner("Gate Opening");
+  scheduleTrackedTimeout("bossGateUnlockTimeoutId", GAME_CONFIG.bossLevel.exitUnlockDelayMs, unlockGate);
+}
+
+function updateBossPhase(announce = true) {
+  if (!gameState.boss.isActive) {
+    return;
+  }
+
+  const nextPhase = gameState.boss.gateUnlocked
+    ? 3
+    : gameState.boss.activatedCoreCount > 0
+      ? 2
+      : 1;
+
+  if (gameState.boss.phase === nextPhase) {
+    return;
+  }
+
+  gameState.boss.phase = nextPhase;
+  updateHUD();
+  if (announce) {
+    showBossBanner(`Boss Phase ${nextPhase}`);
+  }
+  syncBossPulseWallSchedule();
+}
+
+function maybeShowBossLockedHint() {
+  const now = performance.now();
+  if (now < gameState.boss.finishLockHintUntil) {
+    return;
+  }
+
+  gameState.boss.finishLockHintUntil = now + 1200;
+  showBossBanner(gameState.boss.gateUnlockPending ? "Gate Opening" : "Gate Locked");
+}
+
+function getActivePulseWallAtCell(x, y) {
+  return gameState.boss.pulseWalls.find((pulseWall) => (
+    pulseWall.state === "active" &&
+    pulseWall.cells.some((cell) => cell.x === x && cell.y === y)
+  ));
+}
+
 // ===== Hazards and Tokens =====
+function scheduleBossPulseWall() {
+  if (
+    !gameState.boss.isActive ||
+    !GAME_CONFIG.bossLevel.pulseWall.enabled ||
+    gameState.boss.phase < GAME_CONFIG.bossLevel.pulseWall.phaseMin ||
+    gameState.bossPulseTimeoutId ||
+    gameState.bossPulseStageTimeoutId
+  ) {
+    return;
+  }
+
+  const { min, max } = GAME_CONFIG.bossLevel.pulseWall.intervalMs;
+  scheduleTrackedTimeout("bossPulseTimeoutId", randomBetween(min, max), spawnBossPulseWall);
+}
+
+function syncBossPulseWallSchedule() {
+  clearBossPulseWalls();
+  scheduleBossPulseWall();
+}
+
+function spawnBossPulseWall() {
+  if (!gameState.boss.isActive || gameState.boss.phase < GAME_CONFIG.bossLevel.pulseWall.phaseMin) {
+    return;
+  }
+
+  const lanes = getBossPulseLaneBatch();
+  if (lanes.length === 0) {
+    scheduleBossPulseWall();
+    return;
+  }
+
+  const now = performance.now();
+  gameState.boss.pulseWalls = lanes.map((cells) => ({
+    cells,
+    state: "warning",
+    startedAt: now
+  }));
+
+  scheduleTrackedTimeout(
+    "bossPulseStageTimeoutId",
+    GAME_CONFIG.bossLevel.pulseWall.warningDurationMs,
+    activateBossPulseWall
+  );
+}
+
+function activateBossPulseWall() {
+  const now = performance.now();
+  gameState.boss.pulseWalls.forEach((pulseWall) => {
+    pulseWall.state = "active";
+    pulseWall.startedAt = now;
+  });
+
+  scheduleTrackedTimeout(
+    "bossPulseStageTimeoutId",
+    GAME_CONFIG.bossLevel.pulseWall.activeDurationMs,
+    () => {
+      clearBossPulseWalls();
+      scheduleBossPulseWall();
+    }
+  );
+}
+
+function clearBossPulseWalls(clearSpawnSchedule = true) {
+  gameState.boss.pulseWalls = [];
+  clearTrackedTimeout("bossPulseStageTimeoutId");
+  if (clearSpawnSchedule) {
+    clearTrackedTimeout("bossPulseTimeoutId");
+  }
+}
+
+function getBossPulseLaneBatch() {
+  const candidates = getBossPulseLaneCandidates();
+  if (candidates.length === 0) {
+    return [];
+  }
+
+  shuffleArray(candidates);
+  const laneCount = getBossPulseLaneCount();
+  return candidates.slice(0, laneCount).map((lane) => lane.cells);
+}
+
+function getBossPulseLaneCount() {
+  return gameState.boss.phase >= 3
+    ? GAME_CONFIG.bossLevel.pulseWall.laneCount.phase3
+    : GAME_CONFIG.bossLevel.pulseWall.laneCount.phase2;
+}
+
+function getBossPulseLaneCandidates() {
+  const candidates = [];
+
+  for (let y = 1; y < GRID_ROWS - 1; y += 1) {
+    const cells = [];
+    for (let x = 1; x < GRID_COLS - 1; x += 1) {
+      if (gameState.maze[y][x] !== PATH || isImportantCell(x, y)) {
+        continue;
+      }
+      cells.push({ x, y });
+    }
+    if (cells.length >= 4) {
+      candidates.push({ axis: "row", index: y, cells });
+    }
+  }
+
+  for (let x = 1; x < GRID_COLS - 1; x += 1) {
+    const cells = [];
+    for (let y = 1; y < GRID_ROWS - 1; y += 1) {
+      if (gameState.maze[y][x] !== PATH || isImportantCell(x, y)) {
+        continue;
+      }
+      cells.push({ x, y });
+    }
+    if (cells.length >= 4) {
+      candidates.push({ axis: "col", index: x, cells });
+    }
+  }
+
+  return candidates;
+}
+
 // Spawn a wave of spikes based on the current level.
 function spawnSpike() {
   if (!gameState.isGameRunning || gameState.isPaused || gameState.page !== "game" || DEBUG_FLAGS.noSpikes) {
@@ -947,7 +1402,6 @@ function spawnSpike() {
 
   prepareMovingSpikes(spawnedSpikes);
   prepareHomingSpikes(spawnedSpikes);
-  advanceBossWave();
 
   const visibleMs = getSpikeVisibleDuration();
   scheduleTrackedTimeout("spikeClearTimeoutId", visibleMs, () => {
@@ -1783,10 +2237,25 @@ function shiftActiveExpirations(duration) {
       spike.homingEndsAt += duration;
     }
   });
+
+  gameState.boss.cores.forEach((core) => {
+    if (core.activatedAt > 0) {
+      core.activatedAt += duration;
+    }
+  });
+
+  gameState.boss.pulseWalls.forEach((pulseWall) => {
+    pulseWall.startedAt += duration;
+  });
+
+  if (gameState.boss.finishLockHintUntil > 0) {
+    gameState.boss.finishLockHintUntil += duration;
+  }
 }
 
 function clearLevelTimers() {
   clearSpike();
+  clearBossPulseWalls();
   clearLifeToken();
   clearShieldTokens();
   clearShieldEffect();
@@ -1799,6 +2268,7 @@ function clearActiveRunState() {
   stopKeyboardControls();
   stopGameLoop();
   clearLevelTimers();
+  resetBossState();
   resetPauseState();
 }
 
@@ -1900,8 +2370,33 @@ function updateHUD() {
   hud.difficultyFlag.classList.toggle("is-easy", gameState.difficulty === "easy");
   hud.difficultyFlag.classList.toggle("is-hard", gameState.difficulty === "hard");
   hud.bossFlag.hidden = !isBossLevel();
+  updateBossObjectiveText();
   hud.finalLevelText.textContent = gameState.level;
   hud.endHighScore.textContent = activeHighScore;
+}
+
+function updateBossObjectiveText() {
+  if (!hud.bossObjectiveText) {
+    return;
+  }
+
+  if (!gameState.boss.isActive) {
+    hud.bossObjectiveText.hidden = true;
+    return;
+  }
+
+  hud.bossObjectiveText.hidden = false;
+  if (gameState.boss.gateUnlocked) {
+    hud.bossObjectiveText.textContent = "Boss: Escape";
+    return;
+  }
+
+  if (gameState.boss.gateUnlockPending) {
+    hud.bossObjectiveText.textContent = "Boss: Gate opening";
+    return;
+  }
+
+  hud.bossObjectiveText.textContent = `Boss: ${gameState.boss.activatedCoreCount}/${GAME_CONFIG.bossLevel.coreCount} cores`;
 }
 
 // Persist unfinished run progress.
@@ -1976,7 +2471,20 @@ function getActiveDebugFlags() {
   return flags;
 }
 
+function getBossPhaseConfig() {
+  if (!gameState.boss.isActive || !isBossLevel()) {
+    return null;
+  }
+
+  return GAME_CONFIG.bossLevel.phases[gameState.boss.phase] || null;
+}
+
 function getSpikeSpawnDelay() {
+  const bossPhase = getBossPhaseConfig();
+  if (bossPhase) {
+    return randomBetween(bossPhase.spawnDelayMs.min, bossPhase.spawnDelayMs.max);
+  }
+
   return gameState.difficulty === "hard"
     ? randomBetween(GAME_CONFIG.spikes.spawnDelayMs.hard.min, GAME_CONFIG.spikes.spawnDelayMs.hard.max)
     : randomBetween(GAME_CONFIG.spikes.spawnDelayMs.easy.min, GAME_CONFIG.spikes.spawnDelayMs.easy.max);
@@ -1990,26 +2498,10 @@ function isBossLevel() {
   );
 }
 
-function getBossPattern() {
-  if (!isBossLevel()) {
-    return null;
-  }
-
-  return GAME_CONFIG.bossLevel.wavePatterns[
-    gameState.bossWaveIndex % GAME_CONFIG.bossLevel.wavePatterns.length
-  ];
-}
-
-function advanceBossWave() {
-  if (isBossLevel()) {
-    gameState.bossWaveIndex += 1;
-  }
-}
-
 function getMovingSpikeRatio() {
-  const bossPattern = getBossPattern();
-  if (bossPattern) {
-    return bossPattern.movingRatio;
+  const bossPhase = getBossPhaseConfig();
+  if (bossPhase) {
+    return bossPhase.movingRatio;
   }
 
   if (gameState.level < GAME_CONFIG.spikes.moving.levelMin) {
@@ -2025,13 +2517,13 @@ function getMovingSpikeRatio() {
 }
 
 function getHomingSpikeRatio() {
-  if (gameState.difficulty === "hard" && isLevel31Plus()) {
-    return GAME_CONFIG.spikes.homing.hardLevel31Ratio;
+  const bossPhase = getBossPhaseConfig();
+  if (bossPhase) {
+    return bossPhase.homingRatio;
   }
 
-  const bossPattern = getBossPattern();
-  if (bossPattern) {
-    return bossPattern.homingRatio;
+  if (gameState.difficulty === "hard" && isLevel31Plus()) {
+    return GAME_CONFIG.spikes.homing.hardLevel31Ratio;
   }
 
   if (gameState.level < GAME_CONFIG.spikes.homing.levelMin) {
@@ -2093,20 +2585,76 @@ function getShieldPulse() {
 }
 
 function showLevelTransition() {
+  showOverlayBanner(`Level ${gameState.level}`, GAME_CONFIG.visual.levelTransitionMs);
+}
+
+function showBossBanner(text) {
+  showOverlayBanner(text, GAME_CONFIG.bossLevel.phaseBannerMs);
+}
+
+function showOverlayBanner(text, durationMs) {
   if (!overlays.levelTransition || !overlays.levelTransitionText) {
     return;
   }
 
-  overlays.levelTransitionText.textContent = `Level ${gameState.level}`;
+  const banner = getOverlayBannerContent(text);
+  overlays.levelTransitionText.className = `level-transition-card ${banner.variant}`;
+  overlays.levelTransitionText.innerHTML = `
+    <span class="level-transition-label">${banner.label}</span>
+    <span class="level-transition-value">${banner.value}</span>
+  `;
   overlays.levelTransition.classList.add("is-active");
-
-  if (gameState.levelTransitionTimeoutId) {
-    window.clearTimeout(gameState.levelTransitionTimeoutId);
-  }
-
-  scheduleTrackedTimeout("levelTransitionTimeoutId", GAME_CONFIG.visual.levelTransitionMs, () => {
+  scheduleTrackedTimeout("levelTransitionTimeoutId", durationMs, () => {
     overlays.levelTransition.classList.remove("is-active");
   });
+}
+
+function getOverlayBannerContent(text) {
+  if (text.startsWith("Level ")) {
+    return {
+      label: "Stage Clear",
+      value: text,
+      variant: "banner-level"
+    };
+  }
+
+  if (text.startsWith("Boss Phase ")) {
+    return {
+      label: "Boss Alert",
+      value: text.replace("Boss ", ""),
+      variant: "banner-boss"
+    };
+  }
+
+  if (text === "Gate Locked") {
+    return {
+      label: "Boss Gate",
+      value: "Locked",
+      variant: "banner-warning"
+    };
+  }
+
+  if (text === "Gate Opening") {
+    return {
+      label: "Boss Gate",
+      value: "Opening",
+      variant: "banner-warning"
+    };
+  }
+
+  if (text === "Escape") {
+    return {
+      label: "Boss Gate",
+      value: "Escape",
+      variant: "banner-escape"
+    };
+  }
+
+  return {
+    label: "Notice",
+    value: text,
+    variant: "banner-level"
+  };
 }
 
 function clearSavedProgress() {
@@ -2247,7 +2795,8 @@ function getAdjacentWallSides(x, y) {
 function isImportantCell(x, y) {
   return (
     (x === gameState.start.x && y === gameState.start.y) ||
-    (x === gameState.finish.x && y === gameState.finish.y)
+    (x === gameState.finish.x && y === gameState.finish.y) ||
+    gameState.boss.cores.some((core) => core.x === x && core.y === y)
   );
 }
 
@@ -2357,6 +2906,10 @@ function randomFloat(min, max) {
   return Math.random() * (max - min) + min;
 }
 
+function getCellDistance(fromCell, toCell) {
+  return Math.abs(fromCell.x - toCell.x) + Math.abs(fromCell.y - toCell.y);
+}
+
 function getSpikeVisibleDuration() {
   const visibleMs = isLevel31Plus()
     ? GAME_CONFIG.spikes.visibleMs.nightmare
@@ -2367,8 +2920,8 @@ function getSpikeVisibleDuration() {
 function getSpikeCountForLevel() {
   const scaling = GAME_CONFIG.spikes.scaling;
   const baseCount = scaling.baseCount + Math.floor((gameState.level - 1) * scaling.countGrowthPerLevel);
-  const bossPattern = getBossPattern();
-  const scaledCount = bossPattern ? Math.ceil(baseCount * bossPattern.countMultiplier) : baseCount;
+  const bossPhase = getBossPhaseConfig();
+  const scaledCount = bossPhase ? Math.ceil(baseCount * bossPhase.countMultiplier) : baseCount;
   const spread = randomBetween(-scaling.randomSpread, scaling.randomSpread);
   return Math.max(1, Math.min(scaling.maxCount, scaledCount + spread));
 }

@@ -81,11 +81,45 @@ const GAME_CONFIG = {
   },
   bossLevel: {
     everyLevels: 10,
-    wavePatterns: [
-      { countMultiplier: 1.15, movingRatio: 0, homingRatio: 0 },
-      { countMultiplier: 1.0, movingRatio: 0.32, homingRatio: 0 },
-      { countMultiplier: 0.85, movingRatio: 0.12, homingRatio: 0.18 }
-    ]
+    coreCount: 3,
+    rewardLives: 1,
+    phaseBannerMs: 1400,
+    exitUnlockDelayMs: 700,
+    arena: {
+      extraOpenCells: 10,
+      spreadMinDistance: 4
+    },
+    phases: {
+      1: {
+        countMultiplier: 0.9,
+        movingRatio: 0.08,
+        homingRatio: 0,
+        spawnDelayMs: { min: 3400, max: 5200 }
+      },
+      2: {
+        countMultiplier: 1.1,
+        movingRatio: 0.22,
+        homingRatio: 0.06,
+        spawnDelayMs: { min: 2600, max: 4200 }
+      },
+      3: {
+        countMultiplier: 1.2,
+        movingRatio: 0.18,
+        homingRatio: 0.12,
+        spawnDelayMs: { min: 2200, max: 3400 }
+      }
+    },
+    pulseWall: {
+      enabled: true,
+      phaseMin: 2,
+      intervalMs: { min: 4200, max: 6200 },
+      warningDurationMs: 1000,
+      activeDurationMs: 1400,
+      laneCount: {
+        phase2: 1,
+        phase3: 2
+      }
+    }
   },
   tokens: {
     life: {

@@ -254,6 +254,25 @@ h2 {
   background: rgba(255, 255, 255, 0.08);
 }
 
+.boss-objective {
+  min-height: 28px;
+  display: grid;
+  place-items: center;
+  align-self: end;
+  width: fit-content;
+  max-width: 100%;
+  margin: 2px auto 0;
+  padding: 0 10px;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 999px;
+  color: #ffe36d;
+  font-size: 0.72rem;
+  font-weight: 900;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  background: rgba(255, 185, 72, 0.08);
+}
+
 .hud-group {
   min-width: 0;
   display: flex;
@@ -542,6 +561,7 @@ canvas {
   pointer-events: none;
   transform: scale(1.02);
   transition: opacity 260ms ease, transform 260ms ease;
+  place-items: center;
 }
 
 .level-transition.is-active {
@@ -549,11 +569,51 @@ canvas {
   transform: scale(1);
 }
 
-.level-transition span {
-  font-size: clamp(2.2rem, 12vw, 4.2rem);
+.level-transition-card {
+  display: grid;
+  gap: 6px;
+  min-width: min(70vw, 280px);
+  max-width: min(76vw, 320px);
+  padding: 16px 18px;
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  border-radius: 22px;
+  text-align: center;
+  background: linear-gradient(180deg, rgba(8, 18, 34, 0.82), rgba(8, 18, 34, 0.62));
+  box-shadow: 0 16px 42px rgba(0, 0, 0, 0.32);
+  backdrop-filter: blur(10px);
+}
+
+.level-transition-label {
+  color: rgba(255, 255, 255, 0.76);
+  font-size: 0.72rem;
+  font-weight: 800;
+  letter-spacing: 0.22em;
+  text-transform: uppercase;
+}
+
+.level-transition-value {
+  color: #ffffff;
+  font-size: clamp(1.9rem, 9vw, 3rem);
   font-weight: 900;
-  letter-spacing: -0.06em;
-  text-shadow: 0 8px 28px rgba(0, 0, 0, 0.42);
+  line-height: 0.96;
+  letter-spacing: -0.05em;
+  text-shadow: 0 8px 28px rgba(0, 0, 0, 0.34);
+}
+
+.level-transition-card.banner-level .level-transition-value {
+  color: #ffffff;
+}
+
+.level-transition-card.banner-boss .level-transition-value {
+  color: #ffe36d;
+}
+
+.level-transition-card.banner-warning .level-transition-value {
+  color: #ff8a6b;
+}
+
+.level-transition-card.banner-escape .level-transition-value {
+  color: #70d8ff;
 }
 
 .modal-overlay {
@@ -800,5 +860,27 @@ canvas {
   .controls {
     bottom: 12px;
     transform: none;
+  }
+
+  .level-transition-card {
+    min-width: min(74vw, 240px);
+    max-width: min(80vw, 272px);
+    padding: 14px 14px;
+    border-radius: 18px;
+  }
+
+  .level-transition-label {
+    font-size: 0.64rem;
+    letter-spacing: 0.18em;
+  }
+
+  .level-transition-value {
+    font-size: clamp(1.6rem, 8.6vw, 2.5rem);
+  }
+
+  .boss-objective {
+    min-height: 26px;
+    padding: 0 9px;
+    font-size: 0.67rem;
   }
 }

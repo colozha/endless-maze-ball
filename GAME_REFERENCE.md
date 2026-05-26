@@ -53,7 +53,6 @@ Mapping keyboard disimpan di `DIRECTION_BY_KEY` dalam `js/config.js`.
 - `audio`: Web Audio context.
 - `isPaused`: status pause aktif.
 - `pausedTimers`: registry timeout yang sedang dihentikan saat pause.
-- `bossWaveIndex`: urutan pola hazard boss level.
 
 ## Labirin
 
@@ -173,11 +172,17 @@ Mulai level `31`, game masuk fase tema baru dan rule survival baru.
 
 Boss Level aktif di mode Hard pada setiap level kelipatan `10`.
 
-- Maze tetap normal.
-- Hazard memakai pola khusus per wave.
-- Wave boss berganti setiap fase duri spawn.
-- Pola boss diatur dari `GAME_CONFIG.bossLevel.wavePatterns`.
 - Easy tidak memakai Boss Level.
+- Finish terkunci saat level dimulai.
+- Player harus mengaktifkan `3` core lebih dulu.
+- Core aktif tidak ikut reset saat player terkena damage.
+- Boss memakai `3` phase: unlock, pressure, dan escape.
+- Hazard boss memakai config phase dari `GAME_CONFIG.bossLevel.phases`.
+- Mulai phase `2`, boss bisa memanggil `pulse wall`.
+- Pulse wall memberi warning singkat lalu menjadi jalur berbahaya.
+- Setelah semua core aktif, gate membuka setelah delay singkat lalu player harus finish.
+- Clear boss memberi bonus `+1` nyawa.
+- Continue pada boss level membuat maze boss baru dan objective boss diulang dari awal.
 
 ## Token Nyawa
 
