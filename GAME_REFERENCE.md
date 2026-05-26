@@ -42,7 +42,8 @@ Mapping keyboard disimpan di `DIRECTION_BY_KEY` dalam `js/config.js`.
 - `player`: posisi, target, animasi, dan queue gerakan bola.
 - `activeSpikes`: duri yang sedang aktif.
 - `lifeToken`: token nyawa aktif jika ada.
-- `shieldToken`: token shield aktif jika ada.
+- `lifeTokenSpawnCount`: jumlah spawn token nyawa pada level aktif.
+- `shieldTokens`: daftar token shield aktif.
 - `shieldActiveUntil`: waktu berakhirnya efek shield pada bola.
 - `particles`: particle pickup token aktif.
 - `playerTrail`: titik trail bola saat bergerak.
@@ -99,7 +100,8 @@ Interval spawn duri:
 
 - Easy: setiap `5-10 detik`.
 - Hard: setiap `3-7 detik`.
-- Duri aktif selama `2-4 detik`.
+- Level `1-30`: duri aktif selama `2-4 detik`.
+- Level `31+`: duri aktif selama `3-8 detik`.
 
 Jumlah duri berdasarkan level:
 
@@ -130,20 +132,42 @@ Pada level `11-20`, sebagian duri bisa bergerak hanya di mode Hard.
 
 ### Duri Homing Level 21+
 
-Pada level `21+`, sebagian duri bergerak mengejar bola hanya di mode Hard.
+Pada level `21+`, sebagian duri menjadi homing hanya di mode Hard.
 
 - Berlaku setiap fase duri muncul ke arena.
 - Game memilih sekitar `10%` dari semua duri aktif secara acak.
-- Duri terpilih bergerak mengejar posisi bola selama `7 detik`.
+- Kurang dari `50%` homing spike benar-benar mengejar posisi bola.
+- Implementasi saat ini memakai rasio player-chasing `40%` dari homing spike.
+- Sisa homing spike bergerak ke target random di cell kosong maze.
+- Semua homing spike aktif selama `5 detik`.
 - Duri homing mengikuti jalur kosong maze dengan pathfinding grid.
 - Duri homing tidak boleh menembus dinding.
 - Duri homing memakai warna warning berbeda dari duri normal.
 - Duri homing mengabaikan duri lain sebagai blocker agar tidak berhenti saat bertemu duri lain.
 - Jika duri homing tersangkut, game menghitung ulang jalur dari cell kosong terdekat.
+- Jika homing spike random mencapai targetnya, game memilih target random baru.
 - Arah segitiga duri homing mengikuti arah gerakan aktual dengan rotasi halus saat berbelok.
-- Setelah 7 detik, duri homing menghilang.
+- Setelah 5 detik, duri homing menghilang.
 - Efek collision tetap sama: bola kehilangan 1 nyawa jika menyentuh duri homing.
 - Jika shield aktif, bola tetap kebal terhadap duri homing.
+
+### Shield Otomatis Level 21+
+
+Mulai level `21`, bola langsung mendapat shield otomatis saat level dimulai.
+
+- Durasi shield otomatis adalah `5 detik`.
+- Rule ini berlaku di Easy dan Hard.
+- Efek visual dan perilaku shield sama dengan shield dari token.
+
+### Rule Level 31+
+
+Mulai level `31`, game masuk fase tema baru dan rule survival baru.
+
+- Theme visual berganti ke tema `abyss` yang lebih gelap.
+- Duri tetap memakai mode spawn normal sesuai difficulty.
+- Khusus mode Hard, rasio homing spike dikunci ke `10%` dari spike yang spawn.
+- Rule `10%` ini meng-override rasio homing boss pattern.
+- Shield otomatis saat level start tetap aktif selama `5 detik`.
 
 ### Boss Level
 
@@ -157,18 +181,28 @@ Boss Level aktif di mode Hard pada setiap level kelipatan `10`.
 
 ## Token Nyawa
 
-Pada level kelipatan 7, muncul 1 token nyawa.
+Level `1-30` memakai rule lama.
 
+- Pada level kelipatan `7`, muncul `1` token nyawa.
 - Token muncul di cell jalan random.
 - Token berbentuk hati merah.
 - Token aktif selama `15 detik`.
 - Jika diambil, `lives += 1`.
 - Tidak ada batas maksimal nyawa tambahan.
+
+Mulai level `31`, rule token nyawa berubah.
+
+- Token muncul di cell jalan random.
+- Token muncul di setiap level ganjil.
+- Token pertama aktif selama `15 detik`.
+- Jika token pertama gagal diambil, token kedua langsung spawn di cell random lain.
+- Total kesempatan spawn maksimal `2` kali pada level itu.
+- Jika diambil, `lives += 1`.
 - Token dibersihkan saat pindah level, restart, back home, atau game over.
 
 ## Token Shield
 
-Mulai level 6, setiap level punya probabilitas `25%` untuk memunculkan token shield.
+Level `6-30` memakai rule lama.
 
 - Token shield muncul 1 kali pada level tersebut jika probabilitas berhasil.
 - Token spawn di cell jalan random.
@@ -177,6 +211,14 @@ Mulai level 6, setiap level punya probabilitas `25%` untuk memunculkan token shi
 - Jika disentuh bola, token hilang dan shield aktif selama `10 detik`.
 - Saat shield aktif, bola punya stroke biru muda di sekelilingnya.
 - Saat shield aktif, bola kebal dari efek duri.
+
+Mulai level `31`, rule token shield berubah.
+
+- Token shield hanya muncul di level kelipatan `3`.
+- Saat muncul, ada `2` token shield sekaligus di dua cell random yang berbeda.
+- Masing-masing token tetap aktif selama `15 detik`.
+- Jika satu token diambil, shield langsung aktif selama `10 detik`.
+- Token shield lain tetap ada sampai diambil atau expired.
 - Shield direset saat bola menyentuh Finish, walaupun durasinya belum habis.
 - Token dan efek shield dibersihkan saat restart, back home, atau game over.
 
@@ -270,7 +312,8 @@ Config visual berada di `GAME_CONFIG.visual`.
 
 - Level `1-10`: blue maze theme.
 - Level `11-20`: orange hazard theme.
-- Level `21+`: neon danger theme.
+- Level `21-30`: neon danger theme.
+- Level `31+`: abyss terror theme.
 - Token memakai animasi spawn scale/opacity.
 - Token berkedip dan fade saat mendekati waktu hilang.
 - Pickup token memunculkan particle sesuai warna token.

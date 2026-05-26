@@ -72,8 +72,9 @@ const gameState = {
   },
   activeSpikes: [],
   lifeToken: null,
+  lifeTokenSpawnCount: 0,
   lifeTokenTimeoutId: null,
-  shieldToken: null,
+  shieldTokens: [],
   shieldTokenTimeoutId: null,
   shieldTimeoutId: null,
   shieldActiveUntil: 0,
@@ -248,11 +249,16 @@ function startGame() {
 }
 
 function startLevelRuntime() {
-  spawnLifeTokenForLevel();
-  spawnShieldTokenForLevel();
-  scheduleNextSpike();
+  prepareLevelRuntime();
   gameState.lastFrameTime = performance.now();
   updateGame();
+}
+
+function prepareLevelRuntime() {
+  spawnLifeTokenForLevel();
+  spawnShieldTokenForLevel();
+  activateAutoShieldForLevel();
+  scheduleNextSpike();
 }
 
 // Resume saved progress with a newly generated maze.
@@ -306,9 +312,7 @@ function nextLevel() {
   updateHUD();
   updateThemeClass();
   showLevelTransition();
-  spawnLifeTokenForLevel();
-  spawnShieldTokenForLevel();
-  scheduleNextSpike();
+  prepareLevelRuntime();
 }
 
 // ===== Maze Generation =====
@@ -387,7 +391,7 @@ function drawGame() {
   drawStartIcon(gameState.start);
   drawFinishIcon(gameState.finish);
   drawLifeToken();
-  drawShieldToken();
+  drawShieldTokens();
   drawSpikes();
   drawParticles();
   drawPlayerTrail();
@@ -458,14 +462,16 @@ function drawDebugPanel() {
     `spikes: ${gameState.activeSpikes.length}`,
     `moving: ${gameState.activeSpikes.filter((spike) => spike.isMoving).length}`,
     `homing: ${gameState.activeSpikes.filter((spike) => spike.isHoming).length}`,
+    `homingPlayer: ${gameState.activeSpikes.filter((spike) => spike.isHoming && spike.homingTargetMode === "player").length}`,
+    `homingRandom: ${gameState.activeSpikes.filter((spike) => spike.isHoming && spike.homingTargetMode === "random").length}`,
     `lifeToken: ${gameState.lifeToken ? "on" : "off"}`,
-    `shieldToken: ${gameState.shieldToken ? "on" : "off"}`,
+    `shieldTokens: ${gameState.shieldTokens.length}`,
     `shield: ${hasActiveShield() ? "on" : "off"}`,
     `spawnDelay: ${getSpikeSpawnDelay()}ms`
   ];
   const padding = 8;
   const lineHeight = 14;
-  const width = 210;
+  const width = 240;
   const height = padding * 2 + lines.length * lineHeight;
   const x = gameState.offsetX + 8;
   const y = gameState.offsetY + 8;
@@ -664,33 +670,35 @@ function drawLifeToken() {
   ctx.restore();
 }
 
-function drawShieldToken() {
-  if (!gameState.shieldToken) {
+function drawShieldTokens() {
+  if (gameState.shieldTokens.length === 0) {
     return;
   }
 
-  const visual = getTokenVisualState(gameState.shieldToken);
-  const center = gridCenter(gameState.shieldToken.x, gameState.shieldToken.y);
-  const size = gameState.cellSize * 0.36;
-  ctx.save();
-  ctx.globalAlpha = visual.alpha;
-  ctx.translate(center.x, center.y);
-  ctx.scale(visual.scale, visual.scale);
-  ctx.translate(-center.x, -center.y);
-  ctx.fillStyle = "#70d8ff";
-  ctx.beginPath();
-  ctx.moveTo(center.x, center.y - size * 1.1);
-  ctx.lineTo(center.x + size * 0.88, center.y - size * 0.72);
-  ctx.lineTo(center.x + size * 0.66, center.y + size * 0.28);
-  ctx.quadraticCurveTo(center.x + size * 0.42, center.y + size * 0.86, center.x, center.y + size * 1.12);
-  ctx.quadraticCurveTo(center.x - size * 0.42, center.y + size * 0.86, center.x - size * 0.66, center.y + size * 0.28);
-  ctx.lineTo(center.x - size * 0.88, center.y - size * 0.72);
-  ctx.closePath();
-  ctx.fill();
-  ctx.strokeStyle = "rgba(255, 255, 255, 0.78)";
-  ctx.lineWidth = Math.max(1.5, gameState.cellSize * 0.06);
-  ctx.stroke();
-  ctx.restore();
+  gameState.shieldTokens.forEach((shieldToken) => {
+    const visual = getTokenVisualState(shieldToken);
+    const center = gridCenter(shieldToken.x, shieldToken.y);
+    const size = gameState.cellSize * 0.36;
+    ctx.save();
+    ctx.globalAlpha = visual.alpha;
+    ctx.translate(center.x, center.y);
+    ctx.scale(visual.scale, visual.scale);
+    ctx.translate(-center.x, -center.y);
+    ctx.fillStyle = "#70d8ff";
+    ctx.beginPath();
+    ctx.moveTo(center.x, center.y - size * 1.1);
+    ctx.lineTo(center.x + size * 0.88, center.y - size * 0.72);
+    ctx.lineTo(center.x + size * 0.66, center.y + size * 0.28);
+    ctx.quadraticCurveTo(center.x + size * 0.42, center.y + size * 0.86, center.x, center.y + size * 1.12);
+    ctx.quadraticCurveTo(center.x - size * 0.42, center.y + size * 0.86, center.x - size * 0.66, center.y + size * 0.28);
+    ctx.lineTo(center.x - size * 0.88, center.y - size * 0.72);
+    ctx.closePath();
+    ctx.fill();
+    ctx.strokeStyle = "rgba(255, 255, 255, 0.78)";
+    ctx.lineWidth = Math.max(1.5, gameState.cellSize * 0.06);
+    ctx.stroke();
+    ctx.restore();
+  });
 }
 
 // ===== Game Loop and Player Movement =====
@@ -786,9 +794,11 @@ function checkCollision() {
   const hitLifeToken = gameState.lifeToken &&
     gameState.lifeToken.x === playerCell.x &&
     gameState.lifeToken.y === playerCell.y;
-  const hitShieldToken = gameState.shieldToken &&
-    gameState.shieldToken.x === playerCell.x &&
-    gameState.shieldToken.y === playerCell.y;
+  const hitShieldTokenIndex = gameState.shieldTokens.findIndex((shieldToken) => (
+    shieldToken.x === playerCell.x &&
+    shieldToken.y === playerCell.y
+  ));
+  const hitShieldToken = hitShieldTokenIndex >= 0 ? gameState.shieldTokens[hitShieldTokenIndex] : null;
 
   if (hitLifeToken) {
     gameState.lives += 1;
@@ -801,8 +811,8 @@ function checkCollision() {
 
   if (hitShieldToken) {
     activateShield();
-    spawnTokenParticles(gameState.shieldToken, "#70d8ff");
-    clearShieldToken();
+    spawnTokenParticles(hitShieldToken, "#70d8ff");
+    removeShieldTokenAt(hitShieldTokenIndex);
     playShieldPickupSound();
     return;
   }
@@ -939,7 +949,7 @@ function spawnSpike() {
   prepareHomingSpikes(spawnedSpikes);
   advanceBossWave();
 
-  const visibleMs = randomBetween(GAME_CONFIG.spikes.visibleMs.min, GAME_CONFIG.spikes.visibleMs.max);
+  const visibleMs = getSpikeVisibleDuration();
   scheduleTrackedTimeout("spikeClearTimeoutId", visibleMs, () => {
     gameState.activeSpikes = gameState.activeSpikes.filter((spike) => spike.isHoming && performance.now() < spike.homingEndsAt);
     scheduleNextSpike();
@@ -1031,7 +1041,7 @@ function updateMovingSpikes(deltaSeconds) {
   });
 }
 
-// Mark random level 21+ spikes to chase the player.
+// Mark random level 21+ spikes as homing, split between player chase and random patrol.
 function prepareHomingSpikes(spikes = gameState.activeSpikes) {
   if (
     spikes.length === 0 ||
@@ -1053,7 +1063,10 @@ function prepareHomingSpikes(spikes = gameState.activeSpikes) {
   }
 
   const homingCount = Math.max(1, Math.ceil(homingCandidates.length * homingRatio));
-  shuffleArray([...homingCandidates]).slice(0, homingCount).forEach((spike) => {
+  const selectedSpikes = shuffleArray([...homingCandidates]).slice(0, homingCount);
+  const playerChaseCount = Math.floor(selectedSpikes.length * GAME_CONFIG.spikes.homing.playerChaseRatio);
+
+  selectedSpikes.forEach((spike, index) => {
     const pathCell = getSpikePathCell(spike);
     spike.currentX = pathCell.x;
     spike.currentY = pathCell.y;
@@ -1067,6 +1080,10 @@ function prepareHomingSpikes(spikes = gameState.activeSpikes) {
     spike.lastObservedX = pathCell.x;
     spike.lastObservedY = pathCell.y;
     spike.stuckStartedAt = null;
+    spike.homingTargetMode = index < playerChaseCount ? "player" : "random";
+    spike.destinationCell = spike.homingTargetMode === "random"
+      ? getRandomHomingDestinationCell(pathCell)
+      : null;
     spike.targetFacingAngle = spike.facingAngle ?? directionToAngle(getSpikeMoveDirection(spike.side));
     spike.homingEndsAt = performance.now() + GAME_CONFIG.spikes.homing.durationMs;
   });
@@ -1098,14 +1115,18 @@ function updateHomingSpike(spike, now, step) {
 
 function updateHomingSpikeTarget(spike, now, forceRefresh = false) {
   const currentCell = getSpikePathCell(spike);
-  const playerCell = {
-    x: Math.floor(gameState.player.targetX),
-    y: Math.floor(gameState.player.targetY)
-  };
+  const destinationCell = getHomingDestinationCell(spike, currentCell);
+  if (!destinationCell) {
+    spike.targetX = null;
+    spike.targetY = null;
+    spike.pathCells = [];
+    return;
+  }
 
-  if (currentCell.x === playerCell.x && currentCell.y === playerCell.y) {
+  if (currentCell.x === destinationCell.x && currentCell.y === destinationCell.y) {
     spike.targetX = currentCell.x;
     spike.targetY = currentCell.y;
+    spike.pathCells = [];
     return;
   }
 
@@ -1123,7 +1144,7 @@ function updateHomingSpikeTarget(spike, now, forceRefresh = false) {
     return;
   }
 
-  const pathCells = findPathCells(currentCell, playerCell);
+  const pathCells = findPathCells(currentCell, destinationCell);
   spike.lastPathUpdateAt = now;
 
   if (pathCells.length === 0) {
@@ -1132,6 +1153,10 @@ function updateHomingSpikeTarget(spike, now, forceRefresh = false) {
       spike.currentX = fallbackCell.x;
       spike.currentY = fallbackCell.y;
     }
+    if (spike.homingTargetMode === "random") {
+      spike.destinationCell = getRandomHomingDestinationCell(currentCell);
+    }
+    spike.pathCells = [];
     spike.targetX = null;
     spike.targetY = null;
     return;
@@ -1139,6 +1164,54 @@ function updateHomingSpikeTarget(spike, now, forceRefresh = false) {
 
   spike.pathCells = pathCells;
   setNextHomingTarget(spike);
+}
+
+function getHomingDestinationCell(spike, currentCell = getSpikePathCell(spike)) {
+  if (spike.homingTargetMode !== "random") {
+    return getPlayerTargetCell();
+  }
+
+  if (
+    !spike.destinationCell ||
+    (spike.destinationCell.x === currentCell.x && spike.destinationCell.y === currentCell.y)
+  ) {
+    spike.destinationCell = getRandomHomingDestinationCell(currentCell);
+  }
+
+  return spike.destinationCell;
+}
+
+function getPlayerTargetCell() {
+  return {
+    x: Math.floor(gameState.player.targetX),
+    y: Math.floor(gameState.player.targetY)
+  };
+}
+
+function getRandomHomingDestinationCell(currentCell) {
+  const playerCell = getPlayerTargetCell();
+  const candidates = [];
+
+  for (let y = 1; y < GRID_ROWS - 1; y += 1) {
+    for (let x = 1; x < GRID_COLS - 1; x += 1) {
+      if (
+        gameState.maze[y][x] !== PATH ||
+        isImportantCell(x, y) ||
+        (x === playerCell.x && y === playerCell.y) ||
+        (x === currentCell.x && y === currentCell.y)
+      ) {
+        continue;
+      }
+
+      candidates.push({ x, y });
+    }
+  }
+
+  if (candidates.length === 0) {
+    return null;
+  }
+
+  return candidates[Math.floor(Math.random() * candidates.length)];
 }
 
 function findNextPathCell(startCell, targetCell) {
@@ -1277,6 +1350,10 @@ function consumeReachedHomingCell(spike) {
     spike.pathCells[0].y === spike.targetY
   ) {
     spike.pathCells.shift();
+  }
+
+  if (spike.homingTargetMode === "random" && (!spike.pathCells || spike.pathCells.length === 0)) {
+    spike.destinationCell = getRandomHomingDestinationCell(getSpikePathCell(spike));
   }
 }
 
@@ -1500,40 +1577,39 @@ function cellKey(x, y) {
   return `${x},${y}`;
 }
 
-// Spawn bonus life token on every 7th level.
 function spawnLifeTokenForLevel() {
-  if (!DEBUG_FLAGS.forceLifeToken && gameState.level % GAME_CONFIG.tokens.life.everyLevels !== 0) {
+  gameState.lifeTokenSpawnCount = 0;
+
+  if (!shouldSpawnLifeTokenForLevel()) {
     return;
   }
 
-  const candidates = [];
-  for (let y = 1; y < GRID_ROWS - 1; y += 1) {
-    for (let x = 1; x < GRID_COLS - 1; x += 1) {
-      if (
-        gameState.maze[y][x] === PATH &&
-        !isImportantCell(x, y) &&
-        !isPlayerCell(x, y)
-      ) {
-        candidates.push({ x, y });
-      }
-    }
-  }
+  spawnLifeTokenAttempt();
+}
 
+function spawnLifeTokenAttempt(excludedCellKey = null) {
+  const candidates = getTokenSpawnCandidates({
+    excludeLifeToken: true,
+    excludeShieldTokens: true,
+    excludedCellKey
+  });
   if (candidates.length === 0) {
     return;
   }
 
   const now = performance.now();
+  gameState.lifeTokenSpawnCount += 1;
   gameState.lifeToken = {
     ...candidates[Math.floor(Math.random() * candidates.length)],
     spawnedAt: now,
     expiresAt: now + GAME_CONFIG.tokens.life.durationMs
   };
-  scheduleTrackedTimeout("lifeTokenTimeoutId", GAME_CONFIG.tokens.life.durationMs, clearLifeToken);
+  scheduleTrackedTimeout("lifeTokenTimeoutId", GAME_CONFIG.tokens.life.durationMs, expireLifeToken);
 }
 
 function clearLifeToken() {
   gameState.lifeToken = null;
+  gameState.lifeTokenSpawnCount = 0;
 
   if (gameState.lifeTokenTimeoutId) {
     window.clearTimeout(gameState.lifeTokenTimeoutId);
@@ -1542,47 +1618,60 @@ function clearLifeToken() {
   delete gameState.pausedTimers.lifeTokenTimeoutId;
 }
 
-// Randomly spawn a temporary shield token from level 6 onward.
-function spawnShieldTokenForLevel() {
-  if (
-    !DEBUG_FLAGS.forceShieldToken &&
-    (
-      gameState.level < GAME_CONFIG.tokens.shield.levelMin ||
-      Math.random() >= GAME_CONFIG.tokens.shield.spawnChance
-    )
-  ) {
+function expireLifeToken() {
+  if (!gameState.lifeToken) {
+    clearLifeToken();
     return;
   }
 
-  const candidates = [];
-  for (let y = 1; y < GRID_ROWS - 1; y += 1) {
-    for (let x = 1; x < GRID_COLS - 1; x += 1) {
-      if (
-        gameState.maze[y][x] === PATH &&
-        !isImportantCell(x, y) &&
-        !isPlayerCell(x, y) &&
-        !isLifeTokenCell(x, y)
-      ) {
-        candidates.push({ x, y });
-      }
+  const previousCellKey = cellKey(gameState.lifeToken.x, gameState.lifeToken.y);
+  gameState.lifeToken = null;
+
+  if (gameState.lifeTokenTimeoutId) {
+    window.clearTimeout(gameState.lifeTokenTimeoutId);
+    gameState.lifeTokenTimeoutId = null;
+  }
+  delete gameState.pausedTimers.lifeTokenTimeoutId;
+
+  if (
+    shouldRetryLifeTokenForLevel() &&
+    gameState.lifeTokenSpawnCount < GAME_CONFIG.tokens.life.retryMaxSpawns
+  ) {
+    spawnLifeTokenAttempt(previousCellKey);
+    if (gameState.lifeToken) {
+      return;
     }
   }
 
+  gameState.lifeTokenSpawnCount = 0;
+}
+
+function spawnShieldTokenForLevel() {
+  const shieldTokenCount = getShieldTokenSpawnCount();
+  if (shieldTokenCount <= 0) {
+    return;
+  }
+
+  const candidates = getTokenSpawnCandidates({
+    excludeLifeToken: true,
+    excludeShieldTokens: true
+  });
   if (candidates.length === 0) {
     return;
   }
 
+  shuffleArray(candidates);
   const now = performance.now();
-  gameState.shieldToken = {
-    ...candidates[Math.floor(Math.random() * candidates.length)],
+  gameState.shieldTokens = candidates.slice(0, shieldTokenCount).map((candidate) => ({
+    ...candidate,
     spawnedAt: now,
     expiresAt: now + GAME_CONFIG.tokens.shield.tokenDurationMs
-  };
-  scheduleTrackedTimeout("shieldTokenTimeoutId", GAME_CONFIG.tokens.shield.tokenDurationMs, clearShieldToken);
+  }));
+  scheduleTrackedTimeout("shieldTokenTimeoutId", GAME_CONFIG.tokens.shield.tokenDurationMs, clearShieldTokens);
 }
 
-function clearShieldToken() {
-  gameState.shieldToken = null;
+function clearShieldTokens() {
+  gameState.shieldTokens = [];
 
   if (gameState.shieldTokenTimeoutId) {
     window.clearTimeout(gameState.shieldTokenTimeoutId);
@@ -1591,10 +1680,21 @@ function clearShieldToken() {
   delete gameState.pausedTimers.shieldTokenTimeoutId;
 }
 
-function activateShield() {
-  gameState.shieldActiveUntil = performance.now() + GAME_CONFIG.tokens.shield.effectDurationMs;
+function removeShieldTokenAt(index) {
+  if (index < 0 || index >= gameState.shieldTokens.length) {
+    return;
+  }
 
-  scheduleTrackedTimeout("shieldTimeoutId", GAME_CONFIG.tokens.shield.effectDurationMs, () => {
+  gameState.shieldTokens.splice(index, 1);
+  if (gameState.shieldTokens.length === 0) {
+    clearShieldTokens();
+  }
+}
+
+function activateShield(durationMs = GAME_CONFIG.tokens.shield.effectDurationMs) {
+  gameState.shieldActiveUntil = performance.now() + durationMs;
+
+  scheduleTrackedTimeout("shieldTimeoutId", durationMs, () => {
     clearShieldEffect();
     playShieldExpireSound();
   });
@@ -1608,6 +1708,14 @@ function clearShieldEffect() {
     gameState.shieldTimeoutId = null;
   }
   delete gameState.pausedTimers.shieldTimeoutId;
+}
+
+function activateAutoShieldForLevel() {
+  if (!shouldAutoShieldAtLevelStart()) {
+    return;
+  }
+
+  activateShield(GAME_CONFIG.tokens.shield.autoStartDurationMs);
 }
 
 function scheduleTrackedTimeout(timerKey, delay, callback) {
@@ -1661,10 +1769,10 @@ function shiftActiveExpirations(duration) {
     gameState.lifeToken.expiresAt += duration;
   }
 
-  if (gameState.shieldToken) {
-    gameState.shieldToken.spawnedAt += duration;
-    gameState.shieldToken.expiresAt += duration;
-  }
+  gameState.shieldTokens.forEach((shieldToken) => {
+    shieldToken.spawnedAt += duration;
+    shieldToken.expiresAt += duration;
+  });
 
   if (gameState.shieldActiveUntil > 0) {
     gameState.shieldActiveUntil += duration;
@@ -1680,7 +1788,7 @@ function shiftActiveExpirations(duration) {
 function clearLevelTimers() {
   clearSpike();
   clearLifeToken();
-  clearShieldToken();
+  clearShieldTokens();
   clearShieldEffect();
   clearVisualEffects();
 }
@@ -1917,6 +2025,10 @@ function getMovingSpikeRatio() {
 }
 
 function getHomingSpikeRatio() {
+  if (gameState.difficulty === "hard" && isLevel31Plus()) {
+    return GAME_CONFIG.spikes.homing.hardLevel31Ratio;
+  }
+
   const bossPattern = getBossPattern();
   if (bossPattern) {
     return bossPattern.homingRatio;
@@ -1937,7 +2049,8 @@ function getHomingSpikeRatio() {
 function getCurrentThemeKey() {
   if (gameState.level <= GAME_CONFIG.visual.themes.blue.maxLevel) return "blue";
   if (gameState.level <= GAME_CONFIG.visual.themes.orange.maxLevel) return "orange";
-  return "neon";
+  if (gameState.level <= GAME_CONFIG.visual.themes.neon.maxLevel) return "neon";
+  return "abyss";
 }
 
 function getCurrentTheme() {
@@ -1950,7 +2063,7 @@ function updateThemeClass() {
     return;
   }
 
-  frame.classList.remove("theme-blue", "theme-orange", "theme-neon");
+  frame.classList.remove("theme-blue", "theme-orange", "theme-neon", "theme-abyss");
   frame.classList.add(`theme-${getCurrentThemeKey()}`);
 }
 
@@ -2146,12 +2259,109 @@ function isLifeTokenCell(x, y) {
   return Boolean(gameState.lifeToken && gameState.lifeToken.x === x && gameState.lifeToken.y === y);
 }
 
+function isShieldTokenCell(x, y) {
+  return gameState.shieldTokens.some((shieldToken) => shieldToken.x === x && shieldToken.y === y);
+}
+
+function isLevel21Plus() {
+  return gameState.level >= GAME_CONFIG.tokens.shield.autoStartLevelMin;
+}
+
+function isLevel31Plus() {
+  return gameState.level >= GAME_CONFIG.visual.themes.abyss.minLevel;
+}
+
+function shouldAutoShieldAtLevelStart() {
+  return isLevel21Plus();
+}
+
+function shouldSpawnLifeTokenForLevel() {
+  if (DEBUG_FLAGS.forceLifeToken) {
+    return true;
+  }
+
+  if (isLevel31Plus()) {
+    return gameState.level % 2 === 1;
+  }
+
+  return gameState.level % GAME_CONFIG.tokens.life.everyLevels === 0;
+}
+
+function shouldRetryLifeTokenForLevel() {
+  return isLevel31Plus() && gameState.level % 2 === 1;
+}
+
+function getShieldTokenSpawnCount() {
+  if (DEBUG_FLAGS.forceShieldToken) {
+    return shouldSpawnDoubleShieldTokensForLevel()
+      ? GAME_CONFIG.tokens.shield.doubleSpawnCount
+      : 1;
+  }
+
+  if (shouldSpawnDoubleShieldTokensForLevel()) {
+    return GAME_CONFIG.tokens.shield.doubleSpawnCount;
+  }
+
+  if (isLevel31Plus()) {
+    return 0;
+  }
+
+  if (
+    gameState.level < GAME_CONFIG.tokens.shield.levelMin ||
+    Math.random() >= GAME_CONFIG.tokens.shield.spawnChance
+  ) {
+    return 0;
+  }
+
+  return 1;
+}
+
+function shouldSpawnDoubleShieldTokensForLevel() {
+  return (
+    gameState.level >= GAME_CONFIG.tokens.shield.doubleSpawnLevelMin &&
+    gameState.level % GAME_CONFIG.tokens.shield.doubleSpawnEveryLevels === 0
+  );
+}
+
+function getTokenSpawnCandidates({
+  excludeLifeToken = false,
+  excludeShieldTokens = false,
+  excludedCellKey = null
+} = {}) {
+  const candidates = [];
+  for (let y = 1; y < GRID_ROWS - 1; y += 1) {
+    for (let x = 1; x < GRID_COLS - 1; x += 1) {
+      if (
+        gameState.maze[y][x] !== PATH ||
+        isImportantCell(x, y) ||
+        isPlayerCell(x, y) ||
+        excludedCellKey === cellKey(x, y) ||
+        (excludeLifeToken && isLifeTokenCell(x, y)) ||
+        (excludeShieldTokens && isShieldTokenCell(x, y))
+      ) {
+        continue;
+      }
+
+      candidates.push({ x, y });
+    }
+  }
+
+  return candidates;
+}
+
 function randomBetween(min, max) {
   return Math.floor(Math.random() * (max - min + 1)) + min;
 }
 
 function randomFloat(min, max) {
   return Math.random() * (max - min) + min;
+}
+
+function getSpikeVisibleDuration() {
+  const visibleMs = isLevel31Plus()
+    ? GAME_CONFIG.spikes.visibleMs.nightmare
+    : GAME_CONFIG.spikes.visibleMs.default;
+  return randomBetween(visibleMs.min, visibleMs.max);
 }
 
 function getSpikeCountForLevel() {

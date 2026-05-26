@@ -38,8 +38,15 @@ const GAME_CONFIG = {
   },
   spikes: {
     visibleMs: {
-      min: 2000,
-      max: 4000
+      default: {
+        min: 2000,
+        max: 4000
+      },
+      nightmare: {
+        levelMin: 31,
+        min: 3000,
+        max: 8000
+      }
     },
     spawnDelayMs: {
       easy: { min: 5000, max: 10000 },
@@ -54,14 +61,16 @@ const GAME_CONFIG = {
     homing: {
       levelMin: 21,
       ratio: 0.1,
-      durationMs: 7000,
-      speedCellsPerSecond: 3.2
+      durationMs: 5000,
+      speedCellsPerSecond: 3.2,
+      hardLevel31Ratio: 0.1,
+      playerChaseRatio: 0.4
     },
     scaling: {
       baseCount: 5,
-      countGrowthPerLevel: 1.12,
-      randomSpread: 2,
-      maxCount: 50,
+      countGrowthPerLevel: 1.05,
+      randomSpread: 3,
+      maxCount: 23,
       movingRatioStart: 0.1,
       movingRatioGrowth: 0.015,
       movingRatioMax: 0.28,
@@ -81,13 +90,20 @@ const GAME_CONFIG = {
   tokens: {
     life: {
       everyLevels: 7,
-      durationMs: 15000
+      durationMs: 15000,
+      oddLevelMin: 31,
+      retryMaxSpawns: 2
     },
     shield: {
       levelMin: 6,
       spawnChance: 0.25,
       tokenDurationMs: 15000,
-      effectDurationMs: 10000
+      effectDurationMs: 10000,
+      autoStartLevelMin: 21,
+      autoStartDurationMs: 5000,
+      doubleSpawnLevelMin: 31,
+      doubleSpawnEveryLevels: 3,
+      doubleSpawnCount: 2
     }
   },
   visual: {
@@ -122,13 +138,23 @@ const GAME_CONFIG = {
       },
       neon: {
         minLevel: 21,
-        maxLevel: Infinity,
-        path: "#101622",
-        wallStart: "#3043ff",
-        wallEnd: "#111735",
+        maxLevel: 30,
+        path: "#07111b",
+        wallStart: "#5672ff",
+        wallEnd: "#1a2450",
         spike: "#ff2bd6",
         homingSpike: "#21f6ff",
         homingGlow: "rgba(33, 246, 255, 0.78)"
+      },
+      abyss: {
+        minLevel: 31,
+        maxLevel: Infinity,
+        path: "#02060d",
+        wallStart: "#6b1f56",
+        wallEnd: "#1a0b22",
+        spike: "#ff335f",
+        homingSpike: "#8ff7ff",
+        homingGlow: "rgba(143, 247, 255, 0.82)"
       }
     }
   }

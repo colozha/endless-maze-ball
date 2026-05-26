@@ -32,7 +32,7 @@ Tidak ada framework atau library eksternal.
 - Canvas responsif dengan rasio portrait.
 - Kontrol keyboard, joystick, dan swipe.
 - Sound effect untuk move, success, fail, shield pickup, dan shield expire.
-- Tema visual per level: blue, orange hazard, dan neon danger.
+- Tema visual per level: blue, orange hazard, neon danger, dan abyss terror.
 - Animasi token, particle pickup, shield pulse, player trail, dan transition saat naik level.
 
 ## Kontrol
@@ -56,24 +56,30 @@ Tidak ada framework atau library eksternal.
 - Semua fitur duri aktif.
 - Duri muncul setiap 3-7 detik.
 - Level 11-20 memiliki sebagian duri bergerak maju.
-- Level 21+ memiliki sebagian duri homing yang mengejar bola melalui jalur maze selama 7 detik.
+- Level 21+ memiliki sebagian duri homing aktif selama 5 detik.
+- Kurang dari 50% homing spike benar-benar mengejar bola.
+- Sisanya bergerak ke target acak di dalam maze.
 - Duri homing punya warna warning berbeda, menghitung ulang jalur jika tersangkut, dan arah segitiganya mengikuti arah gerakan.
+- Level 21+ memberi shield otomatis saat level dimulai selama 5 detik.
 - Setiap level kelipatan 10 menjadi Boss Level dengan pola hazard khusus.
 - Jumlah duri dan rasio hazard naik bertahap, bukan melonjak per rentang level besar.
+- Level 31+ mengunci homing spike ke 10% dari spike spawn di mode Hard, termasuk saat Boss Level.
+- Level 31+ membuat duri bertahan 3-8 detik per wave.
 
 ## Item dan Hazard
 
 - Duri: mengurangi 1 nyawa jika terkena.
-- Duri homing: warna warning biru/cyan dan mengejar bola di mode Hard.
-- Life token: muncul di level kelipatan 7 dan menambah 1 nyawa.
-- Shield token: mulai level 6 punya peluang muncul 25%.
+- Duri homing: warna warning biru/cyan. Sebagian kecil mengejar bola. Sisanya menuju target acak.
+- Life token: level 1-30 muncul di level kelipatan 7. Level 31+ muncul di setiap level ganjil dan punya 2 kesempatan spawn.
+- Shield token: level 6-30 punya peluang muncul 25%. Level 31+ muncul 2 sekaligus di level kelipatan 3.
 - Shield aktif selama 10 detik dan membuat bola kebal dari duri.
 
 ## Visual Themes
 
 - Level 1-10: Blue Maze.
 - Level 11-20: Orange Hazard.
-- Level 21+: Neon Danger.
+- Level 21-30: Neon Danger.
+- Level 31+: Abyss Terror.
 
 Visual feedback tambahan:
 
